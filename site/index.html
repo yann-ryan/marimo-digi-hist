@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text analysis labs</title>
+<style>
+  :root { --ink: #1d2b3a; --muted: #5b6875; --accent: #1f6f8b; --warm: #c8553d; --card: #eef1f4; --bg: #ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e8edf2; --muted: #a9b4bf; --accent: #6fb7d1; --warm: #e98a74; --card: #1f2a36; --bg: #121a22; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-family: Cambria, Georgia, serif; font-size: 2.3rem; margin: 0 0 .3rem; }
+  .lede { color: var(--muted); margin: 0 0 2rem; }
+  .labs { display: grid; gap: 16px; }
+  a.lab { display: block; background: var(--card); border-radius: 12px; padding: 20px 22px; color: inherit; text-decoration: none; border: 2px solid transparent; }
+  a.lab:hover, a.lab:focus { border-color: var(--accent); }
+  .lab h2 { font-family: Cambria, Georgia, serif; margin: 0 0 .2rem; color: var(--accent); font-size: 1.4rem; }
+  .lab .meta { color: var(--warm); font-weight: 600; font-size: .95rem; margin-bottom: .4rem; }
+  .lab p { margin: 0; }
+  .how { margin-top: 2.2rem; padding: 18px 22px; border-left: 0; background: var(--card); border-radius: 12px; }
+  .how h3 { margin: 0 0 .4rem; font-size: 1.05rem; }
+  .how ol { margin: 0; padding-left: 1.2rem; }
+  footer { margin-top: 2rem; color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Text analysis labs</h1>
+  <p class="lede">Hands-on tasters in computational text analysis for historians: counting words, phrases and collocations, comparing groups, and word embeddings. Each lab runs entirely in your browser.</p>
+
+  <div class="labs">
+    <a class="lab" href="old-bailey/">
+      <h2>The Old Bailey Proceedings</h2>
+      <div class="meta">1674–1913 · London’s central criminal court · English</div>
+      <p>240 years of trials: from watchmen to policemen, from guineas to sovereigns.</p>
+    </a>
+    <a class="lab" href="royal-society/">
+      <h2>The Royal Society Corpus</h2>
+      <div class="meta">1665–1920 · Philosophical Transactions and Proceedings · English</div>
+      <p>250 years of science writing: from curious and ingenious to results, from phlogiston to oxygen.</p>
+    </a>
+    <a class="lab" href="dutch-parliament/">
+      <h2>The Dutch parliamentary proceedings</h2>
+      <div class="meta">1814–2012 · Handelingen der Staten-Generaal · Dutch</div>
+      <p>Two centuries of debate: from <i>zoo</i> to <i>zo</i>, from <i>Indië</i> to <i>Europa</i>, from <i>onderdanen</i> to <i>burgers</i>.</p>
+    </a>
+  </div>
+
+  <div class="how">
+    <h3>How to start</h3>
+    <ol>
+      <li>Use Chrome on a laptop. Nothing to install, no account needed.</li>
+      <li>Open a lab and wait about 30 seconds while it loads.</li>
+      <li>Click the ▶ “run all” button (bottom right) once.</li>
+      <li>Your changes are not saved when you reload: use the menu to download your notebook if you want to keep it.</li>
+    </ol>
+  </div>
+
+  <footer>Built with <a href="https://marimo.io">marimo</a>. Data licences are given at the end of each lab.</footer>
+</main>
+</body>
+</html>
