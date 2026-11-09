@@ -207,12 +207,14 @@ def _(mo):
 
 
 @app.cell
-def _(alt, texts):
-    alt.Chart(texts).mark_bar().encode(
+def _(alt, pl, texts):
+    speeches_per_role = texts.group_by("decade", "role").agg(pl.len().alias("speeches")).sort("decade")
+
+    alt.Chart(speeches_per_role).mark_bar().encode(
         x=alt.X("decade:O", title="Decade"),
-        y=alt.Y("count():Q", title="Speeches in the sample"),
+        y=alt.Y("speeches:Q", title="Speeches in the sample"),
         color=alt.Color("role:N", title="Role"),
-        tooltip=["decade", "role", "count()"],
+        tooltip=["decade", "role", "speeches"],
     ).properties(height=250)
     return
 
