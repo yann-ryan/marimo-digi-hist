@@ -1,0 +1,5 @@
+.venv/
+build/
+__marimo__/
+__pycache__/
+
