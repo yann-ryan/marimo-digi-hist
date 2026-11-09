@@ -256,24 +256,28 @@ def _(re):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Now we apply the same rule to all ~6.8 million words in our sample, and count how often
-    each word occurs. (This can take a few seconds.)
+    Now we apply the same rule to all ~6.8 million words in our sample. First we count each
+    word **in each trial** (one row per trial and word), then add those up to get a total for
+    each word across the whole sample. (This can take a few seconds.)
     """)
     return
 
 
 @app.cell
 def _(pl, trials):
-    tokens = trials.select(
-        "trial_id",
-        "decade",
-        pl.col("offence", "defendant_gender", "verdict", "punishment").cast(pl.Categorical),
-        pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("word"),
-    ).explode("word").drop_nulls("word")
+    trial_word_counts = (
+        trials.lazy()
+        .select("trial_id", pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("word"))
+        .explode("word")
+        .drop_nulls("word")
+        .group_by("trial_id", "word")
+        .agg(pl.len().alias("count"))
+        .collect()
+    )
 
-    word_counts = tokens.group_by("word").agg(pl.len().alias("count")).sort("count", descending=True)
+    word_counts = trial_word_counts.group_by("word").agg(pl.col("count").sum()).sort("count", descending=True)
     word_counts
-    return tokens, word_counts
+    return trial_word_counts, word_counts
 
 
 @app.cell(hide_code=True)
@@ -348,9 +352,13 @@ def _(mo):
 
 
 @app.cell
-def _(pl, tokens):
-    decade_totals = tokens.group_by("decade").agg(pl.len().alias("total"))
-    decade_word_counts = tokens.group_by("decade", "word").agg(pl.len().alias("count"))
+def _(pl, trial_word_counts, trials):
+    decade_word_counts = (
+        trial_word_counts.join(trials.select("trial_id", "decade"), on="trial_id")
+        .group_by("decade", "word")
+        .agg(pl.col("count").sum())
+    )
+    decade_totals = decade_word_counts.group_by("decade").agg(pl.col("count").sum().alias("total"))
     return decade_totals, decade_word_counts
 
 
@@ -480,17 +488,12 @@ def _(compare_by, mo, trials):
 
 
 @app.cell
-def _(pl, tokens):
-    # one row per (trial, word): does this trial mention this word at all?
-    mentions = tokens.unique(["trial_id", "word"])
-    return (mentions,)
-
-
-@app.cell
-def _(alt, compare_by, group_a, group_b, mentions, pl, trials):
+def _(alt, compare_by, group_a, group_b, pl, trial_word_counts, trials):
     def trials_mentioning(group):
         n_trials = trials.filter(pl.col(compare_by.value) == group).height
-        counts = mentions.filter(pl.col(compare_by.value) == group).group_by("word").agg(pl.len().alias("n"))
+        in_group = trials.filter(pl.col(compare_by.value) == group).select("trial_id")
+        # each row of trial_word_counts is one trial mentioning one word
+        counts = trial_word_counts.join(in_group, on="trial_id", how="semi").group_by("word").agg(pl.len().alias("n"))
         return counts, n_trials
 
     _a, _trials_a = trials_mentioning(group_a.value)
