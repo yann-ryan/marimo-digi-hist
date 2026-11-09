@@ -19,12 +19,18 @@ build/                         scratch: trained gensim models, logs (not needed 
 
 | Time | Section | Students do |
 |---|---|---|
-| 0–10 | Intro + warm-up | fork on molab; drag the 39-shilling slider to see reactivity |
-| 10–25 | 1 · Meet the data | browse/sort/filter the table; read random trials by decade and offence; median words per trial by decade (source criticism: the Proceedings get longer) |
-| 25–50 | 2 · Counting | edit a sentence to see tokenisation; top words with/without stopwords; words per 10k by decade for comma-separated words; keyword-in-context |
-| 50–60 | 3 · Comparing groups | distinctive words (log ratio) by gender / offence / verdict / punishment |
-| 60–90 | 4 · Embeddings | neighbours in 1674–1799 vs 1800–1913 side by side; analogies; 2-D PCA map of chosen words |
-| 90–105 | Wrap-up | one word, three questions, short plenary |
+| 0–8 | Intro + warm-up | open the link, run all; drag the 39-shilling slider to see reactivity |
+| 8–20 | 1 · Meet the data | browse/sort/filter the table; read random trials; median words per trial by decade (source criticism) |
+| 20–45 | 2 · Counting | tokenisation; top words ± stopwords; words **and phrases** per 10k words by decade; **n-grams** containing a word; keyword-in-context |
+| 45–65 | 3 · Association and distinctive words | **collocations** with MI score (window, period, minimum count); distinctive words by gender / offence / verdict / punishment; **TF-IDF** by decade or offence (optional) |
+| 65–92 | 4 · Embeddings | **cosine similarity of two words**; neighbours in 1674–1799 vs 1800–1913; analogies; 2-D map |
+| 92–105 | Wrap-up | one word, three questions, short plenary |
+
+The lab mirrors the lecture's three methods: frequency (counts, normalisation,
+n-grams), association (collocations, distinctiveness/TF-IDF) and embeddings.
+N-grams and collocations re-read the text on demand, so for speed in the browser
+they use at most a random 1,000 of the trials containing the word (the output
+says so) and refuse words occurring more than 30,000 times (e.g. *the*, *prisoner*).
 
 Only numpy, polars and altair are needed at run time (no gensim), so the
 notebook runs on molab, locally, and in the browser (WebAssembly).
@@ -61,8 +67,8 @@ Tested 2026-11-09 in Chrome: loads, and everything runs without errors in about 
 **In the edit-mode export, cells do not run on page load. Students have to click
 the ▶ "run all" button (bottom right) once.** The `--mode run` export (app view,
 no code) runs automatically.
-The browser version is limited to ~2 GB of memory. Part 2 holds ~6.8M tokens in
-memory, so check it on a typical student laptop before relying on it.
+The browser version is limited to ~2 GB of memory. Counting keeps one row per
+(trial, word), about 2M rows. Edits are lost on reload (the browser asks first).
 
 ## Rebuilding the data
 

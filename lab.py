@@ -338,15 +338,15 @@ def _(mo):
     ### Words over time
 
     Raw counts are misleading when the amount of text changes (remember the chart in Part 1).
-    So we count **occurrences per 10,000 words** in each decade. Type one or more words,
-    separated by commas.
+    So we count **occurrences per 10,000 words** in each decade. Type one or more words or
+    phrases (like `silver watch`), separated by commas.
     """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    trend_words = mo.ui.text(value="watchman, constable, policeman", label="Words:", full_width=True)
+    trend_words = mo.ui.text(value="watchman, constable, policeman", label="Words or phrases:", full_width=True)
     trend_words
     return (trend_words,)
 
@@ -363,12 +363,30 @@ def _(pl, trial_word_counts, trials):
 
 
 @app.cell
-def _(alt, decade_totals, decade_word_counts, pl, trend_words):
-    _words = [w.strip().lower() for w in trend_words.value.split(",") if w.strip()]
+def _(alt, decade_totals, decade_word_counts, pl, re, trend_words, trials):
+    _terms = [" ".join(re.findall(r"[a-z]+", t.lower())) for t in trend_words.value.split(",")]
+    _words = [t for t in _terms if t and " " not in t]
+    _phrases = [t for t in _terms if " " in t]
+
+    # single words: look them up in the counts we already made
+    _parts = [
+        decade_totals.join(pl.DataFrame({"word": _words}, schema={"word": pl.String}), how="cross")
+        .join(decade_word_counts, on=["decade", "word"], how="left")
+        .select("decade", "total", "word", pl.col("count").cast(pl.Int64))
+    ]
+    # phrases (n-grams): search for them in the text, with punctuation turned into spaces
+    if _phrases:
+        _clean = trials.select("decade", pl.col("text").str.to_lowercase().str.replace_all(r"[^a-z]+", " ").alias("t"))
+        for _p in _phrases:
+            _parts.append(
+                _clean.group_by("decade")
+                .agg(pl.col("t").str.count_matches(rf"\b{_p}\b").sum().cast(pl.Int64).alias("count"))
+                .join(decade_totals, on="decade")
+                .select("decade", "total", pl.lit(_p).alias("word"), "count")
+            )
 
     trend = (
-        decade_totals.join(pl.DataFrame({"word": _words}), how="cross")
-        .join(decade_word_counts, on=["decade", "word"], how="left")
+        pl.concat(_parts)
         .with_columns(pl.col("count").fill_null(0))
         .with_columns((pl.col("count") / pl.col("total") * 10_000).round(2).alias("per_10k_words"))
         .sort("decade")
@@ -388,13 +406,124 @@ def _(mo):
     mo.md(r"""
     ✏️ **Your turn.** Try some of these, or your own ideas: `guinea, sovereign`; `handkerchief, watch`; `gin, beer`;
     `wig, umbrella, bicycle`; `sword, pistol, revolver`;
-    `hanged, transported`. Does a rise or fall reflect a change in society, in the language,
-    or in how the court recorded things?
+    `hanged, transported`; `watch house, public house`. Does a rise or fall reflect a change in
+    society, in the language, or in how the court recorded things?
+
+    ### Phrases: n-grams
+
+    Single words lose their context: *watch* can be a timepiece or the night watch. An
+    **n-gram** is a sequence of *n* words in a row: *silver watch* is a 2-gram (bigram), *the
+    watch house* a 3-gram (trigram). Type a word to see the most common phrases that contain it.
+    Then try an interesting phrase in the *Words over time* chart above.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, pl, trial_word_counts, trials, word_counts):
+    TOO_COMMON = 30_000
+
+    def stop_if_too_common(word):
+        """Very common words (the, and, prisoner...) make slow and uninteresting results."""
+        n = word_counts.filter(pl.col("word") == word)["count"].sum()
+        mo.stop(
+            n > TOO_COMMON,
+            mo.md(
+                f"*{word}* occurs {n:,} times: too common to be interesting here (and slow in the browser). "
+                "Try a less frequent word."
+            ).callout(kind="warn"),
+        )
+
+    MAX_TRIALS = 1_000
+
+    def tokens_of_trials_with(word, years=None):
+        """All the words, in order, of the trials that contain `word` (optionally only between two years).
+
+        To keep things quick in the browser, at most MAX_TRIALS trials (a random selection) are used.
+        Returns the words and a short note saying how many trials were used.
+        """
+        ids = trial_word_counts.filter(pl.col("word") == word).select("trial_id")
+        if years:
+            ids = ids.join(trials.filter(pl.col("year").is_between(*years)).select("trial_id"), on="trial_id", how="semi")
+        note = f"Based on all {ids.height:,} trials that contain *{word}*."
+        if ids.height > MAX_TRIALS:
+            note = f"Based on a random {MAX_TRIALS:,} of the {ids.height:,} trials that contain *{word}*."
+            ids = ids.sample(MAX_TRIALS, seed=1674)
+        tokens = (
+            trials.select("trial_id", "text")
+            .join(ids, on="trial_id", how="semi")
+            .select("trial_id", pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("word"))
+            .explode("word")
+            .drop_nulls("word")
+            .with_row_index("position")
+            .with_columns(pl.col("position").cast(pl.Int64))
+        )
+        return tokens, note
+    return stop_if_too_common, tokens_of_trials_with
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    ngram_word = mo.ui.text(value="watch", label="Phrases containing:")
+    ngram_n = mo.ui.radio(
+        options={"2 words (bigrams)": 2, "3 words (trigrams)": 3}, value="2 words (bigrams)", inline=True
+    )
+    mo.hstack([ngram_word, ngram_n], justify="start", gap=2)
+    return ngram_n, ngram_word
+
+
+@app.cell
+def _(alt, mo, ngram_n, ngram_word, pl, stop_if_too_common, tokens_of_trials_with):
+    _word = ngram_word.value.strip().lower()
+    _n = ngram_n.value
+    stop_if_too_common(_word)
+    _tokens, _note = tokens_of_trials_with(_word)
+
+    # line each word up with the n-1 words that follow it, keeping only phrases within one trial
+    _grams = _tokens.select(
+        [pl.col("word").shift(-k).alias(f"w{k}") for k in range(_n)]
+        + [(pl.col("trial_id").shift(-(_n - 1)) == pl.col("trial_id")).alias("same_trial")]
+    ).filter(pl.col("same_trial"))
+    ngram_counts = (
+        _grams.filter(pl.any_horizontal([pl.col(f"w{k}") == _word for k in range(_n)]))
+        .select(pl.concat_str([pl.col(f"w{k}") for k in range(_n)], separator=" ").alias("ngram"))
+        .group_by("ngram")
+        .agg(pl.len().alias("count"))
+        .sort("count", descending=True)
+        .head(20)
+    )
+
+    (
+        mo.md(f"*{_word}* does not occur in the sample.").callout(kind="warn")
+        if ngram_counts.height == 0
+        else mo.vstack(
+            [
+                mo.md(_note),
+                alt.Chart(ngram_counts)
+                .mark_bar()
+                .encode(
+                    x=alt.X("count:Q", title="Occurrences"),
+                    y=alt.Y("ngram:N", sort="-x", title=None),
+                    tooltip=["ngram", "count"],
+                )
+                .properties(height=alt.Step(16)),
+            ]
+        )
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Try `silver`, `public`, `house` (as trigrams), `knife`, `police`. Which
+    phrases are formulas of the court (*dwelling house*, *value*) and which tell you about
+    everyday life?
 
     ### Keyword in context
 
     A count tells you *how often*, not *how*. Always go back to the text. This shows every
-    occurrence of a word with the words around it, a *concordance*.
+    occurrence of a word or phrase with the words around it, a *concordance*.
     """)
     return
 
@@ -446,7 +575,109 @@ def _(kwic_n, kwic_word, mo, pl, random, re, trials):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 3 · Comparing groups
+    ## Part 3 · Association and distinctive words
+
+    ### Collocations: the company a word keeps
+
+    Which words appear **near** a word more often than you would expect by chance? For every
+    occurrence of the word, we look at the words within a *window* on either side, and count them.
+    Then we compare that with how often each word would turn up there **by chance**, given how
+    common it is overall. The **MI score** (mutual information) is that comparison on a log scale:
+    1 means twice as often as chance, 2 four times, 3 eight times.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    coll_word = mo.ui.text(value="gin", label="Word:")
+    coll_period = mo.ui.radio(
+        options={"All": "all", "1674–1799": "early", "1800–1913": "late"}, value="All", inline=True, label="Period:"
+    )
+    coll_window = mo.ui.slider(start=1, stop=10, value=5, label="Window (words either side)", show_value=True)
+    coll_min = mo.ui.slider(start=2, stop=50, value=10, label="Minimum times together", show_value=True)
+    coll_sort = mo.ui.radio(
+        options={"strength (MI)": "MI", "how often together": "together"},
+        value="strength (MI)",
+        inline=True,
+        label="Sort by:",
+    )
+    coll_stop = mo.ui.switch(value=True, label="Remove stopwords")
+    mo.vstack(
+        [
+            mo.hstack([coll_word, coll_period], justify="start", gap=2),
+            mo.hstack([coll_window, coll_min], justify="start", gap=2),
+            mo.hstack([coll_sort, coll_stop], justify="start", gap=2),
+        ]
+    )
+    return coll_min, coll_period, coll_sort, coll_stop, coll_window, coll_word
+
+
+@app.cell
+def _(STOPWORDS, coll_min, coll_period, coll_sort, coll_stop, coll_window, coll_word, mo, pl, stop_if_too_common, tokens_of_trials_with, trial_word_counts, trials):
+    _word = coll_word.value.strip().lower()
+    stop_if_too_common(_word)
+    _years = {"all": None, "early": (1674, 1799), "late": (1800, 1913)}[coll_period.value]
+    _w = coll_window.value
+    _tokens, _note = tokens_of_trials_with(_word, _years)
+
+    # every occurrence of the word, paired with each position in the window around it
+    _hits = _tokens.filter(pl.col("word") == _word).select("trial_id", "position")
+    _offsets = pl.DataFrame({"offset": [k for k in range(-_w, _w + 1) if k != 0]})
+    _nearby = (
+        _hits.join(_offsets, how="cross")
+        .select("trial_id", (pl.col("position") + pl.col("offset")).alias("position"))
+        .join(_tokens, on=["trial_id", "position"])  # same trial only
+    )
+    _together = _nearby.group_by("word").agg(pl.len().alias("together"))
+
+    # how common each word is overall, in the same period
+    _counts = trial_word_counts
+    if _years:
+        _counts = _counts.join(trials.filter(pl.col("year").is_between(*_years)).select("trial_id"), on="trial_id", how="semi")
+    _freq = _counts.group_by("word").agg(pl.col("count").sum().alias("frequency"))
+    _total = _freq["frequency"].sum()
+
+    collocations = (
+        _together.join(_freq, on="word")
+        .filter((pl.col("together") >= coll_min.value) & (pl.col("word") != _word))
+        .with_columns((_hits.height * pl.col("frequency") * 2 * _w / _total).alias("expected"))
+        .with_columns(
+            (pl.col("together") / pl.col("expected")).log(2).round(2).alias("MI"),
+            pl.col("expected").round(1),
+        )
+    )
+    if coll_stop.value:
+        collocations = collocations.filter(~pl.col("word").is_in(list(STOPWORDS)))
+    collocations = collocations.sort(coll_sort.value, descending=True).head(25)
+
+    (
+        mo.md(f"*{_word}* does not occur in this period of the sample.").callout(kind="warn")
+        if _hits.height == 0
+        else mo.vstack(
+            [
+                mo.md(f"{_note} The word occurs **{_hits.height:,}** times in them. Its collocates:"),
+                mo.ui.table(
+                    collocations.select("word", "together", "expected", "MI"),
+                    selection=None,
+                    page_size=25,
+                    show_column_summaries=False,
+                ),
+            ]
+        )
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Try `watch`, `knife`, `drunk`, `police`. Then compare `woman` in the two
+    periods. Switch the sort order: words that are *often* nearby are usually just common words;
+    the MI score finds the *specific* company. Lower the minimum to 2 and see why MI needs it:
+    rare words get huge scores from one or two chance meetings.
+
+    ### Comparing groups of trials
 
     The trials come with categories added by historians. We can ask: **which words are much more
     common in one group of trials than in another?** For every word we work out the **share of trials
@@ -548,6 +779,68 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### TF-IDF: what is distinctive about one group? *(optional, if you have time)*
+
+    TF-IDF compares one group with **all the others at once**. Treat every decade (or every
+    offence) as one big "document". A word scores high if it is **frequent in this document**
+    (*term frequency*) but **found in few of the other documents** (*inverse document frequency*).
+    Words found in every document, like *the*, score zero. We only keep words that occur in at
+    least five trials of the group, so that a single trial's names do not take over.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    tfidf_by = mo.ui.dropdown(options={"Decade": "decade", "Offence": "offence"}, value="Offence", label="One document per")
+    tfidf_by
+    return (tfidf_by,)
+
+
+@app.cell
+def _(pl, tfidf_by, trial_word_counts, trials):
+    _doc = tfidf_by.value
+    tfidf = (
+        trial_word_counts.join(trials.filter(pl.col("offence") != "unknown").select("trial_id", _doc), on="trial_id")
+        .group_by(_doc, "word")
+        .agg(pl.col("count").sum(), pl.len().alias("n_trials"))
+    )
+    _n_docs = tfidf[_doc].n_unique()
+    tfidf = tfidf.with_columns(
+        (pl.col("count") / pl.col("count").sum().over(_doc) * 1000).alias("tf_per_1000_words"),
+        pl.len().over("word").alias("documents_with_word"),
+    ).with_columns(
+        (pl.col("tf_per_1000_words") * (_n_docs / pl.col("documents_with_word")).log()).round(3).alias("tf_idf")
+    )
+    return (tfidf,)
+
+
+@app.cell(hide_code=True)
+def _(mo, tfidf, tfidf_by):
+    _values = sorted(tfidf[tfidf_by.value].unique().to_list())
+    tfidf_doc = mo.ui.dropdown(options={str(v): v for v in _values}, value=str(_values[0]), label="Show")
+    tfidf_doc
+    return (tfidf_doc,)
+
+
+@app.cell
+def _(alt, pl, tfidf, tfidf_by, tfidf_doc):
+    _top = (
+        tfidf.filter((pl.col(tfidf_by.value) == tfidf_doc.value) & (pl.col("n_trials") >= 5))
+        .sort("tf_idf", descending=True)
+        .head(20)
+    )
+    alt.Chart(_top).mark_bar().encode(
+        x=alt.X("tf_idf:Q", title="TF-IDF"),
+        y=alt.Y("word:N", sort="-x", title=None),
+        tooltip=["word", "count", "n_trials", "documents_with_word", "tf_idf"],
+    ).properties(height=alt.Step(16), title=f"Most distinctive words: {tfidf_doc.selected_key}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ---
     ## Part 4 · Word embeddings (word2vec)
 
@@ -581,6 +874,42 @@ def _(models):
     # nothing. Only comparisons between words are meaningful.
     _m = models["1800-1913"]
     _m["vectors"][_m["index"]["prisoner"]].round(2)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### How similar are two words?
+
+    To compare two words, the model compares their lists of numbers. **Cosine similarity**
+    measures whether the two lists "point in the same direction": 1 means identical, 0 means
+    unrelated. Try `gin` and `beer`, `gin` and `watch`, `coach` and `cab`.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    sim_a = mo.ui.text(value="gin", label="Word 1:")
+    sim_b = mo.ui.text(value="beer", label="Word 2:")
+    mo.hstack([sim_a, sim_b], justify="start", gap=2)
+    return sim_a, sim_b
+
+
+@app.cell
+def _(mo, models, sim_a, sim_b):
+    def similarity(a, b, period):
+        m = models[period]
+        if a not in m["index"] or b not in m["index"]:
+            return "not in model"
+        return f"{float(m['vectors'][m['index'][a]] @ m['vectors'][m['index'][b]]):.2f}"
+
+    _a, _b = sim_a.value.strip().lower(), sim_b.value.strip().lower()
+    mo.md(
+        f"Similarity of *{_a}* and *{_b}*: **{similarity(_a, _b, '1674-1799')}** in 1674–1799, "
+        f"**{similarity(_a, _b, '1800-1913')}** in 1800–1913"
+    )
     return
 
 
