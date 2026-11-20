@@ -3,3 +3,8 @@ build/
 __marimo__/
 __pycache__/
 
+.DS_Store
+lecture/assets/media/
+lecture/assets/pnas/
+lecture/assets/delpher/
+lecture/html/media/
