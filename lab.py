@@ -50,6 +50,7 @@ def _(mo):
     2. **Count words**: the simplest text analysis, and still one of the most useful
     3. **Compare groups**: which words are typical of trials of women, or of violent crimes?
     4. **Explore word embeddings**: let the computer learn which words "mean" similar things
+    5. **Check the pitfalls**: what a count can and cannot show
 
     ⚠️ *Content note: these are real criminal trials, including violence, sexual assault and
     infanticide, recorded in the language of their time.*
@@ -233,7 +234,7 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 2 · Counting words
+    ## Part 2 · Frequency: how often?
 
     To count words, the computer first has to decide what a "word" is. Our rule is very simple:
     **lower-case everything, and treat every run of letters a–z as a word.** This is called
@@ -333,7 +334,9 @@ def _(STOPWORDS, alt, extra_stop, pl, remove_stop, top_n, word_counts):
 def _(mo):
     mo.md(r"""
     **Question:** with the stopwords removed, what do the top words tell you about *what kind of
-    document* this is, and about the crimes that came before the court?
+    document* this is, and about the crimes that came before the court? *prisoner* and *mr* tell
+    us about the genre; *q* (Question in the transcripts) and *th* (what is left of *29th*) about
+    how it was printed. Stopword lists are choices too: removing *she* and *her* would hide gender.
 
     ### Words over time
 
@@ -406,8 +409,12 @@ def _(mo):
     mo.md(r"""
     ✏️ **Your turn.** Try some of these, or your own ideas: `guinea, sovereign`; `handkerchief, watch`; `gin, beer`;
     `wig, umbrella, bicycle`; `sword, pistol, revolver`;
-    `hanged, transported`; `watch house, public house`. Does a rise or fall reflect a change in
-    society, in the language, or in how the court recorded things?
+    `hanged, transported`; `watch house, public house`.
+
+
+    For every line, ask the lecture's three questions. Did **something happen** (more watches to steal, a new police force from 1829)? Did the
+    word's **meaning change** (*the watch* as night watchmen or as a timepiece)? Or did **the corpus change** (longer trials, a different printer, a different kind of case reported)? Only the first two are
+    about the past.
 
     ### Phrases: n-grams
 
@@ -520,6 +527,94 @@ def _(mo):
     phrases are formulas of the court (*dwelling house*, *value*) and which tell you about
     everyday life?
 
+    ### What comes next? A simple language model
+
+    Count every phrase of a few words, and you can predict the next word: after *a quartern of*
+    (a quarter pint, a measure for spirits) comes *gin* more often than anything else. This is the
+    lecture's n-gram model. Words that follow the same phrase tend to be similar: here, spirits.
+    Type one or more words; separate variants with commas to count them together.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    next_phrase = mo.ui.text(value="a quartern of", label="Words before:", full_width=True)
+    next_split = mo.ui.dropdown(
+        options={"Whole period": 0, "50-year periods": 50, "25-year periods": 25},
+        value="Whole period",
+        label="Split into",
+    )
+    next_show = mo.ui.radio(
+        options={"share of what follows (%)": "share", "per million words": "per_million"},
+        value="share of what follows (%)",
+        inline=True,
+        label="Show:",
+    )
+    mo.vstack([next_phrase, mo.hstack([next_split, next_show], justify="start", gap=2)])
+    return next_phrase, next_show, next_split
+
+
+@app.cell
+def _(mo, next_phrase, next_show, next_split, pl, re, trials):
+    # several variants can be given, separated by commas ("electric, electrical"): they are counted together
+    _variants = [" ".join(re.findall(r"[a-z]+", v.lower())) for v in next_phrase.value.split(",")]
+    _variants = [v for v in _variants if v]
+    mo.stop(not _variants, mo.md("Type one or more words above."))
+    _step = next_split.value
+    _start = (pl.col("year") // max(_step, 1)) * _step
+    _period = pl.lit("all years") if _step == 0 else pl.format("{}–{}", _start, _start + _step - 1)
+    _clean = trials.select(
+        _period.alias("period"), pl.col("text").str.to_lowercase().str.replace_all(r"[^a-z]+", " ").alias("t")
+    )
+    # how many words each period has, to turn counts into "per million words"
+    _words = _clean.group_by("period").agg(pl.col("t").str.count_matches(r"[a-z]+").sum().alias("words"))
+    # every occurrence of the words, plus the one word that follows; keep that last word
+    _found = (
+        _clean.select("period", pl.col("t").str.extract_all(r"\b(?:" + "|".join(_variants) + r") [a-z]+").alias("m"))
+        .explode("m")
+        .drop_nulls("m")
+        .select("period", pl.col("m").str.extract(r"([a-z]+)$", 1).alias("next_word"))
+    )
+    mo.stop(_found.height == 0, mo.md(f"*{next_phrase.value}* does not occur in the sample.").callout(kind="warn"))
+    _counts = _found.group_by("period", "next_word").agg(pl.len().alias("count"))
+    _per_period = _counts.group_by("period").agg(pl.col("count").sum().alias("all_next"))
+    _counts = (
+        _counts.join(_per_period, on="period")
+        .join(_words, on="period")
+        .with_columns(
+            (pl.col("count") / pl.col("all_next") * 100).round(1).alias("share"),
+            (pl.col("count") / pl.col("words") * 1_000_000).round(1).alias("per_million"),
+        )
+    )
+    _top = _found.group_by("next_word").agg(pl.len().alias("times")).sort("times", descending=True).head(15)
+    next_table = (
+        _counts.join(_top, on="next_word")
+        .pivot(on="period", index=["next_word", "times"], values=next_show.value, sort_columns=True)
+        .fill_null(0)
+        .sort("times", descending=True)
+    )
+    mo.vstack(
+        [
+            mo.md(
+                f"*{next_phrase.value}* occurs **{_found.height:,}** times in the sample, followed by "
+                f"{_found['next_word'].n_unique():,} different words. The 15 most common, with their "
+                f"{'share of what follows (%)' if next_show.value == 'share' else 'occurrences per million words'} in each period (*times* = number of occurrences in all periods):"
+            ),
+            mo.ui.table(next_table, selection=None, page_size=15, show_column_summaries=False),
+        ]
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Compare `a quartern of` with `a pint of` (beer, ale, porter: the drinks
+    sold by the pint). Then try `a pair of`, `a silver`, `the prisoner was`, `i saw the`.
+    Predicting the next word is also how large language models such as ChatGPT are trained,
+    with much longer contexts.
+
     ### Keyword in context
 
     A count tells you *how often*, not *how*. Always go back to the text. This shows every
@@ -575,7 +670,7 @@ def _(kwic_n, kwic_word, mo, pl, random, re, trials):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 3 · Association and distinctive words
+    ## Part 3 · Association: in what company?
 
     ### Collocations: the company a word keeps
 
@@ -781,11 +876,18 @@ def _(mo):
     mo.md(r"""
     ### TF-IDF: what is distinctive about one group? *(optional, if you have time)*
 
-    TF-IDF compares one group with **all the others at once**. Treat every decade (or every
-    offence) as one big "document". A word scores high if it is **frequent in this document**
-    (*term frequency*) but **found in few of the other documents** (*inverse document frequency*).
-    Words found in every document, like *the*, score zero. We only keep words that occur in at
-    least five trials of the group, so that a single trial's names do not take over.
+    TF-IDF compares one "document" with **all the others at once**:
+
+    **tf-idf = tf × log(N ÷ df)**
+
+    - *tf* (term frequency): how often the word occurs in this document, per 1,000 words
+    - *N*: the number of documents; *df* (document frequency): how many of them contain the word
+    - log(N ÷ df) is zero for a word found in every document, like *the*, and larger the fewer
+      documents contain it. (We use the natural logarithm; the base only changes the scale.)
+
+    **What counts as a document is your choice**, and it decides which question TF-IDF answers.
+    Here a document is all the trials of one offence (what is typical of killing, of deception?) or of one decade (what is new in the 1830s?). The left chart shows the most frequent
+    words in the document, the right chart the words with the highest TF-IDF scores.
     """)
     return
 
@@ -818,23 +920,48 @@ def _(pl, tfidf_by, trial_word_counts, trials):
 @app.cell(hide_code=True)
 def _(mo, tfidf, tfidf_by):
     _values = sorted(tfidf[tfidf_by.value].unique().to_list())
-    tfidf_doc = mo.ui.dropdown(options={str(v): v for v in _values}, value=str(_values[0]), label="Show")
-    tfidf_doc
-    return (tfidf_doc,)
+    _default = next((str(v) for v in _values if str(v) in ("kill", "1830")), str(_values[0]))
+    tfidf_doc = mo.ui.dropdown(options={str(v): v for v in _values}, value=_default, label="Show")
+    tfidf_min = mo.ui.slider(
+        start=1, stop=20, value=1, label="Only words found in at least this many trials of the document", show_value=True
+    )
+    mo.hstack([tfidf_doc, tfidf_min], justify="start", gap=2)
+    return tfidf_doc, tfidf_min
 
 
 @app.cell
-def _(alt, pl, tfidf, tfidf_by, tfidf_doc):
-    _top = (
-        tfidf.filter((pl.col(tfidf_by.value) == tfidf_doc.value) & (pl.col("n_trials") >= 5))
-        .sort("tf_idf", descending=True)
-        .head(20)
+def _(alt, mo, pl, tfidf, tfidf_by, tfidf_doc, tfidf_min):
+    _doc = tfidf.filter(pl.col(tfidf_by.value) == tfidf_doc.value)
+    _raw = _doc.sort("count", descending=True).head(15)
+    _top = _doc.filter(pl.col("n_trials") >= tfidf_min.value).sort("tf_idf", descending=True).head(15)
+    _tip = ["word", "count", "n_trials", "documents_with_word", "tf_idf"]
+    mo.hstack(
+        [
+            alt.Chart(_raw)
+            .mark_bar(color="#9a9a9a")
+            .encode(x=alt.X("count:Q", title="Occurrences"), y=alt.Y("word:N", sort="-x", title=None), tooltip=_tip)
+            .properties(height=alt.Step(16), width=260, title="Most frequent words"),
+            alt.Chart(_top)
+            .mark_bar()
+            .encode(x=alt.X("tf_idf:Q", title="TF-IDF"), y=alt.Y("word:N", sort="-x", title=None), tooltip=_tip)
+            .properties(height=alt.Step(16), width=260, title="Highest TF-IDF"),
+        ],
+        justify="start",
+        gap=2,
     )
-    alt.Chart(_top).mark_bar().encode(
-        x=alt.X("tf_idf:Q", title="TF-IDF"),
-        y=alt.Y("word:N", sort="-x", title=None),
-        tooltip=["word", "count", "n_trials", "documents_with_word", "tf_idf"],
-    ).properties(height=alt.Step(16), title=f"Most distinctive words: {tfidf_doc.selected_key}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** The lecture showed the killing trials (`kill`): on the left only function words,
+    the same as for every other offence; on the right *deceased*, *manslaughter*, *coroner*,
+    *mortem*, but also surnames (*sellers*, *serne*) and a poison (*aconitine*) that come from one
+    long trial each, and *deceas*, a fragment of *deceased*. Hover over a bar to see in how many
+    trials a word occurs. Raise the minimum number of trials to 5: what disappears? Then try
+    `deception` (cheques, bonds), `royalOffences` (mostly coining), or switch to decades.
+    """)
     return
 
 
@@ -842,16 +969,111 @@ def _(alt, pl, tfidf, tfidf_by, tfidf_doc):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 4 · Word embeddings (word2vec)
+    ## Part 4 · Embeddings: what does a word mean? (word2vec)
 
     Counting treats every word as separate: *watch* and *clock* are as unrelated as *watch* and
     *gin*. **Word embeddings** instead give each word a list of numbers (here, 100 numbers),
     learned from the contexts it appears in. Words used in similar contexts end up with similar
-    numbers. (See last week's lecture for how word2vec does this.)
+    numbers. (See last week's lecture for how word2vec does this, and the counting example below.)
 
     We trained **two separate models** in advance on the full *Proceedings* (not just our
     sample), one on **1674–1799** and one on **1800–1913**, each on about 25 million words. That
     lets us ask how a word's company changed between the two periods.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### From counts to vectors
+
+    The idea behind embeddings, done with plain counting (the lecture's example). For each word
+    on the left, count how often each **context word** appears within 5 words of it, in every
+    trial of the sample. Each row is then a list of numbers, the word's *company profile*: a
+    **vector**. Words with similar rows are used in similar contexts.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    cooc_rows = mo.ui.text(value="gin, beer, pot, watch, handkerchief", label="Words (rows):", full_width=True)
+    cooc_cols = mo.ui.text(value="drank, pint, pocket, stole", label="Context words (columns):", full_width=True)
+    mo.vstack([cooc_rows, cooc_cols])
+    return cooc_cols, cooc_rows
+
+
+@app.cell
+def _(cooc_cols, cooc_rows, mo, np, pl, trial_word_counts, trials):
+    _rows = [w.strip().lower() for w in cooc_rows.value.split(",") if w.strip()][:8]
+    _cols = [w.strip().lower() for w in cooc_cols.value.split(",") if w.strip()][:8]
+    mo.stop(len(_rows) < 2 or not _cols, mo.md("Type at least two words and one context word.").callout(kind="warn"))
+    # all the words, in order, of the trials that contain one of the row words; keep only the words we need
+    _ids = trial_word_counts.filter(pl.col("word").is_in(_rows)).select("trial_id").unique()
+    # (kept small for the browser: only the words we need, with their position in the trial)
+    _keep = _rows + _cols
+    _tokens = (
+        trials.join(_ids, on="trial_id", how="semi")
+        .lazy()
+        .select("trial_id", pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("w"))
+        .select(
+            "trial_id",
+            pl.col("w").list.eval(pl.element().filter(pl.element().is_in(_keep))).alias("word"),
+            pl.col("w").list.eval(pl.arg_where(pl.element().is_in(_keep))).alias("position"),
+        )
+        .explode("word", "position")
+        .drop_nulls("word")
+        .with_columns(pl.col("position").cast(pl.Int64))
+        .collect()
+    )
+    # pairs of a row word and a context word in the same trial, at most 5 words apart
+    _pairs = (
+        _tokens.filter(pl.col("word").is_in(_rows))
+        .rename({"word": "row", "position": "p"})
+        .join(_tokens.filter(pl.col("word").is_in(_cols)).rename({"word": "context", "position": "q"}), on="trial_id")
+        .filter(((pl.col("p") - pl.col("q")).abs() <= 5) & (pl.col("p") != pl.col("q")))
+        .group_by("row", "context")
+        .agg(pl.len().alias("n"))
+    )
+    _n = {(r, c): n for r, c, n in _pairs.iter_rows()}
+    cooc = np.array([[_n.get((r, c), 0) for c in _cols] for r in _rows], dtype=float)
+
+    # cosine similarity: the angle between two rows, whatever their length
+    _norm = np.linalg.norm(cooc, axis=1)
+    _pairs_sim = [
+        {"word 1": _rows[i], "word 2": _rows[j],
+         "cosine": round(float(cooc[i] @ cooc[j] / (_norm[i] * _norm[j])), 2) if _norm[i] and _norm[j] else None}
+        for i in range(len(_rows)) for j in range(i + 1, len(_rows))
+    ]
+    mo.hstack(
+        [
+            mo.vstack([mo.md("**Counts within 5 words**"), mo.ui.table(
+                pl.DataFrame({"word": _rows, **{c: cooc[:, k].astype(int) for k, c in enumerate(_cols)}}),
+                selection=None, show_column_summaries=False)]),
+            mo.vstack([mo.md("**Cosine similarity of the rows**"), mo.ui.table(
+                pl.DataFrame(_pairs_sim).sort("cosine", descending=True, nulls_last=True),
+                selection=None, page_size=10, show_column_summaries=False)]),
+        ],
+        justify="start",
+        gap=2,
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Gin and beer go with *drank* and *pint*; watch and handkerchief with *pocket* and *stole*. *Pot*
+    is in between: a pewter pot was drunk from, and constantly stolen from alehouses. Beer's
+    numbers are bigger than gin's only because beer is mentioned more often. **Cosine similarity**
+    measures the angle between two rows, not their length, so it ignores that: 1 is the same
+    direction, 0 a right angle.
+
+    ✏️ **Your turn.** Add `brandy` or `coat` to the rows, or `fetch` and `silver` to the columns.
+    How do the similarities change? A full table for the *Proceedings* would have 20,000 rows and
+    20,000 columns. word2vec instead *learns* a short list of 100 numbers for each word, by
+    predicting which words appear near each other.
     """)
     return
 
@@ -884,7 +1106,8 @@ def _(mo):
 
     To compare two words, the model compares their lists of numbers. **Cosine similarity**
     measures whether the two lists "point in the same direction": 1 means identical, 0 means
-    unrelated. Try `gin` and `beer`, `gin` and `watch`, `coach` and `cab`.
+    unrelated. Try `gin` and `beer`, `gin` and `pot`, `pot` and `watch`, `watch` and `handkerchief`
+    (compare them with the counts above), then `coach` and `cab`.
     """)
     return
 
@@ -967,6 +1190,17 @@ def _(mo):
     `servant`, `wife`, `watch`, `gin`. Where do the neighbours
     change between periods? Is that a change in **meaning**, in **what was stolen and by whom**,
     or in **how the trials were written**? Check with the concordance in Part 2.
+
+    **What the models learn.** Look closely at `police`: before 1800 its neighbours are *office*,
+    *rotation*, *bow* and *marlborough* (the Rotation Office and the Bow Street and Marlborough Street
+    police offices, not a police force); after 1800 they include surnames (*helson*, *checkley*,
+    *langrish*), probably officers who often gave evidence. Try `constable` (*maroney*), `murder`
+    (*murther*) and `watchhouse` (*computer*: a misreading or variant of *Compter*, two London prisons).
+    The models learn the *Proceedings* and the people who produced and digitised them.
+
+    **Comparing periods.** The two models were trained separately, so their numbers cannot be
+    compared directly: compare the *neighbour lists*. A word needs enough uses in both periods;
+    with only a few dozen uses the neighbours are mostly noise.
 
     ### Analogies
 
@@ -1064,6 +1298,32 @@ def _(alt, map_period, map_words, models, np, pl):
     )
     _missing = sorted(set(_words) - set(_known))
     _chart if not _missing else alt.vconcat(_chart, title=f"Not in the model: {', '.join(_missing)}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ---
+    ## Part 5 · Pitfalls: check before you claim
+
+    Three checks from the lecture, using the tools above.
+
+    1. **Read what a phrase means.** The lecture used *liberty from* and *liberty to* as a measure
+       of two concepts of liberty (freedom from interference, freedom to act). Type `liberty to`
+       into the keyword-in-context box in Part 2. How many examples are about freedom, and how
+       many about permission (*liberty to go into the yard*)? What would a count of *liberty to*
+       have measured?
+    2. **The source changes.** Go back to the trial-length chart in Part 1, then plot `q` (for
+       *Question* in the transcripts) in *Words over time*. Counting per 10,000 words corrects for
+       the amount of text, not for the kind of text that was printed.
+    3. **A peak needs reading.** Pick the highest point on one of your trend lines and read three
+       of the trials behind it. (In the lecture, *asteroid* in American newspapers turned out to
+       be a racehorse.)
+
+    When you have a result, ask: did something happen, did the meaning change, or did the corpus
+    change?
+    """)
     return
 
 

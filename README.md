@@ -38,10 +38,18 @@ build/                         scratch: trained gensim models, logs (not needed 
 |---|---|---|
 | 0–8 | Intro + warm-up | open the link, run all; drag the 39-shilling slider to see reactivity |
 | 8–20 | 1 · Meet the data | browse/sort/filter the table; read random trials; median words per trial by decade (source criticism) |
-| 20–45 | 2 · Counting | tokenisation; top words ± stopwords; words **and phrases** per 10k words by decade; **n-grams** containing a word; keyword-in-context |
-| 45–65 | 3 · Association and distinctive words | **collocations** with MI score (window, period, minimum count); distinctive words by gender / offence / verdict / punishment; **TF-IDF** by decade or offence (optional) |
-| 65–92 | 4 · Embeddings | **cosine similarity of two words**; neighbours in 1674–1799 vs 1800–1913; analogies; 2-D map |
-| 92–105 | Wrap-up | one word, three questions, short plenary |
+| 20–45 | 2 · Frequency | tokenisation; top words ± stopwords (*q*, *th*, *mr*); words **and phrases** per 10k words by decade, with the lecture's three questions; **n-grams** containing a word; **what comes next** (next-word table, e.g. *a quartern of* → gin 43%); keyword-in-context |
+| 45–65 | 3 · Association | **collocations** with MI score (window, period, minimum count); distinctive words by gender / offence / verdict / punishment; **TF-IDF** (optional): formula, raw counts vs TF-IDF side by side, minimum-trials slider (killing trials as in the lecture) |
+| 65–92 | 4 · Embeddings | **co-occurrence matrix** (gin, beer, pot, watch, handkerchief × drank, pint, pocket, stole, with cosines; same counts as the lecture slide); cosine similarity of two words; neighbours in 1674–1799 vs 1800–1913 (police, constable, murder, watchhouse: what the models learn); analogies; 2-D map |
+| 92–100 | 5 · Pitfalls | *liberty to* in KWIC (permission, not liberty); *q* over time (the source changes); read the trials behind a peak |
+| 100–105 | Wrap-up | one word, three questions, short plenary |
+
+The three notebooks were lined up with lecture v6 on 2026-11-20: part titles follow the lecture's
+methods (frequency, association, embeddings), and each lab gained the next-word table, the TF-IDF
+side-by-side view and a Pitfalls part. The Royal Society lab also has the lecture's electricity
+thread (*electric fire / electric current* trends, the noun after *electric* by 25-year period,
+grouped collocates of *electricity* with editable groups, neighbours of *electricity*). The Dutch
+lab has the lecture's *burgers* / *gemeenschap* neighbours and spelling/OCR pitfalls.
 
 The lab mirrors the lecture's three methods: frequency (counts, normalisation,
 n-grams), association (collocations, distinctiveness/TF-IDF) and embeddings.

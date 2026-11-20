@@ -51,6 +51,7 @@ def _(mo):
     2. **Count words**: the simplest text analysis, and still one of the most useful
     3. **Find associations**: which words keep company, and what is typical of astronomy or chemistry?
     4. **Explore word embeddings**: let the computer learn which words "mean" similar things
+    5. **Check the pitfalls**: what a count can and cannot show
 
     You will not need to write much code. Most of the time you change a value (a slider, a box,
     a dropdown) and watch the results update.
@@ -146,7 +147,8 @@ def _(read_data):
 def _(mo):
     mo.md(r"""
     The table above is interactive: sort by clicking a column name, or use the search and filter
-    buttons. Try to find the longest text, or a text ending in a death sentence.
+    buttons. Try to find the longest text, or search for *Franklin*: his 1751 account of
+    electrical experiments is in the sample (the kite letter from the lecture, 1752, is not).
 
     ### Read a text
 
@@ -232,7 +234,7 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 2 · Counting words
+    ## Part 2 · Frequency: how often?
 
     To count words, the computer first has to decide what a "word" is. Our rule is very simple:
     **lower-case everything, and treat every run of letters a–z as a word.** This is called
@@ -405,8 +407,13 @@ def _(mo):
     mo.md(r"""
     ✏️ **Your turn.** Try some of these, or your own ideas: `i, we`; `hath, has`;
     `phlogiston, oxygen, gas`; `telescope, microscope`; `electricity, magnetism`; `cell, cells`;
-    `it is evident, we find`. Does a rise or fall reflect a change in science, in the language,
-    or in what kind of texts the corpus contains?
+    `it is evident, we find`; `electric fire, electric current` (the lecture's example: Franklin's
+    *electric fire* is gone by 1800, the *electric current* takes off after Volta and Faraday).
+
+
+    For every line, ask the lecture's three questions. Did **something happen** (a discovery, a new instrument)? Did the
+    word's **meaning change** (*electric fire* and *electric current* are two ideas of what electricity is)? Or did **the corpus change** (the *Proceedings* and *Abstracts* join the *Transactions* after 1800, and letters give way to papers)? Only the first two are
+    about the past.
 
     ### Phrases: n-grams
 
@@ -516,8 +523,97 @@ def _(alt, mo, ngram_n, ngram_word, pl, stop_if_too_common, tokens_of_texts_with
 def _(mo):
     mo.md(r"""
     ✏️ **Your turn.** Try `inflammable`, `royal`, `evident` (as trigrams), `glass`, `electric`.
+    For *electric*, the next section splits the phrases by period.
     Which phrases are formulas of scientific writing (*it is evident*, *it appears that*) and which
     are names of things?
+
+    ### What comes next? The noun after *electric*
+
+    Count every phrase of a few words, and you can see what follows it. The lecture's table:
+    the word after *electric* or *electrical*, per million words in each 25-year period. Read it
+    from left to right: a *virtue* or *effluvia* given off by rubbed glass, then a *fluid*, *matter*
+    or *fire* (Franklin, Cavendish), then the *current* after Volta's pile (1800) and Faraday, and
+    finally the *field*. Type one or more words; separate variants with commas to count them together.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    next_phrase = mo.ui.text(value="electric, electrical", label="Words before:", full_width=True)
+    next_split = mo.ui.dropdown(
+        options={"Whole period": 0, "50-year periods": 50, "25-year periods": 25},
+        value="25-year periods",
+        label="Split into",
+    )
+    next_show = mo.ui.radio(
+        options={"share of what follows (%)": "share", "per million words": "per_million"},
+        value="per million words",
+        inline=True,
+        label="Show:",
+    )
+    mo.vstack([next_phrase, mo.hstack([next_split, next_show], justify="start", gap=2)])
+    return next_phrase, next_show, next_split
+
+
+@app.cell
+def _(mo, next_phrase, next_show, next_split, pl, re, texts):
+    # several variants can be given, separated by commas ("electric, electrical"): they are counted together
+    _variants = [" ".join(re.findall(r"[a-z]+", v.lower())) for v in next_phrase.value.split(",")]
+    _variants = [v for v in _variants if v]
+    mo.stop(not _variants, mo.md("Type one or more words above."))
+    _step = next_split.value
+    _start = (pl.col("year") // max(_step, 1)) * _step
+    _period = pl.lit("all years") if _step == 0 else pl.format("{}–{}", _start, _start + _step - 1)
+    _clean = texts.select(
+        _period.alias("period"), pl.col("text").str.to_lowercase().str.replace_all(r"[^a-z]+", " ").alias("t")
+    )
+    # how many words each period has, to turn counts into "per million words"
+    _words = _clean.group_by("period").agg(pl.col("t").str.count_matches(r"[a-z]+").sum().alias("words"))
+    # every occurrence of the words, plus the one word that follows; keep that last word
+    _found = (
+        _clean.select("period", pl.col("t").str.extract_all(r"\b(?:" + "|".join(_variants) + r") [a-z]+").alias("m"))
+        .explode("m")
+        .drop_nulls("m")
+        .select("period", pl.col("m").str.extract(r"([a-z]+)$", 1).alias("next_word"))
+    )
+    mo.stop(_found.height == 0, mo.md(f"*{next_phrase.value}* does not occur in the sample.").callout(kind="warn"))
+    _counts = _found.group_by("period", "next_word").agg(pl.len().alias("count"))
+    _per_period = _counts.group_by("period").agg(pl.col("count").sum().alias("all_next"))
+    _counts = (
+        _counts.join(_per_period, on="period")
+        .join(_words, on="period")
+        .with_columns(
+            (pl.col("count") / pl.col("all_next") * 100).round(1).alias("share"),
+            (pl.col("count") / pl.col("words") * 1_000_000).round(1).alias("per_million"),
+        )
+    )
+    _top = _found.group_by("next_word").agg(pl.len().alias("times")).sort("times", descending=True).head(15)
+    next_table = (
+        _counts.join(_top, on="next_word")
+        .pivot(on="period", index=["next_word", "times"], values=next_show.value, sort_columns=True)
+        .fill_null(0)
+        .sort("times", descending=True)
+    )
+    mo.vstack(
+        [
+            mo.md(
+                f"*{next_phrase.value}* occurs **{_found.height:,}** times in the sample, followed by "
+                f"{_found['next_word'].n_unique():,} different words. The 15 most common, with their "
+                f"{'share of what follows (%)' if next_show.value == 'share' else 'occurrences per million words'} in each period (*times* = number of occurrences in all periods):"
+            ),
+            mo.ui.table(next_table, selection=None, page_size=15, show_column_summaries=False),
+        ]
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Switch to *share of what follows* to see which noun dominates each period.
+    Then try `fixed, inflammable`, `the air`, `animal`, `we have`, `it is`. Words that follow
+    the same phrase tend to be similar: this is also how language models learn.
 
     ### Keyword in context
 
@@ -574,7 +670,7 @@ def _(kwic_n, kwic_word, mo, pl, random, re, texts):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 3 · Association and distinctive words
+    ## Part 3 · Association: in what company?
 
     ### Collocations: the company a word keeps
 
@@ -692,6 +788,99 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
+    mo.md(r"""
+    ### Grouping collocates: words near *electricity*
+
+    The lecture's chart: every word within 5 words of *electric*, *electrical* or *electricity*,
+    sorted into groups made by hand, as a share of all occurrences in each 25-year period (here
+    in our sample, so the numbers are smaller and noisier than in the lecture, which used the
+    whole corpus). **The groups are a choice**: a different list gives a different picture. Edit
+    them (one group per line, `name: word, word, ...`), or change the target words.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    group_targets = mo.ui.text(value="electric, electrical, electricity", label="Words:", full_width=True)
+    group_lists = mo.ui.text_area(
+        value=(
+            "rubbing & attraction: rubbed, rubbing, friction, attract, attraction, attracts, attracted, repel, repels, repelled, effluvia, virtue, amber, wax\n"
+            "fluid & fire: fluid, fire, aether, ether\n"
+            "living bodies: animal, animals, torpedo, gymnotus, eel, fish, fishes, nerve, nerves, nervous, muscle, muscles, muscular, frog, frogs, paralytic, patient, patients, cure, cured, disease, shock, shocks\n"
+            "current & measurement: current, currents, resistance, conductivity, volt, volts, ohm, ohms, potential, units\n"
+            "machines & technology: machine, machines, battery, batteries, dynamo, dynamos, telegraph, telegraphs, lamp, lamps, lighting, cable, cables, engine, engines, motor, motors, tramways"
+        ),
+        label="Groups:",
+        full_width=True,
+        rows=6,
+    )
+    mo.vstack([group_targets, group_lists])
+    return group_lists, group_targets
+
+
+@app.cell
+def _(alt, group_lists, group_targets, mo, pl, re, text_word_counts, texts):
+    _targets = [w.strip().lower() for w in group_targets.value.split(",") if w.strip()]
+    _group_of = {}
+    for _line in group_lists.value.splitlines():
+        if ":" in _line:
+            _name, _ws = _line.split(":", 1)
+            for _w in re.findall(r"[a-z]+", _ws.lower()):
+                _group_of[_w] = _name.strip()
+    mo.stop(not _targets or not _group_of, mo.md("Type target words and at least one group.").callout(kind="warn"))
+
+    _ids = text_word_counts.filter(pl.col("word").is_in(_targets)).select("text_id").unique()
+    _tokens = (
+        texts.join(_ids, on="text_id", how="semi")
+        .select("text_id", "year", pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("word"))
+        .explode("word")
+        .drop_nulls("word")
+        .with_row_index("position")
+        .with_columns(pl.col("position").cast(pl.Int64))
+    )
+    _hits = _tokens.filter(pl.col("word").is_in(_targets)).with_columns(
+        pl.format("{}–{}", (pl.col("year") // 25) * 25, (pl.col("year") // 25) * 25 + 24).alias("period")
+    )
+    _groups = pl.DataFrame({"word": list(_group_of), "group": list(_group_of.values())})
+    _nearby = (
+        _hits.select("text_id", "position", "period")
+        .join(pl.DataFrame({"offset": [k for k in range(-5, 6) if k != 0]}), how="cross")
+        .select("text_id", "period", (pl.col("position") + pl.col("offset")).alias("position"))
+        .join(_tokens.select("text_id", "position", "word"), on=["text_id", "position"])
+        .join(_groups, on="word")
+    )
+    _n = _hits.group_by("period").agg(pl.len().alias("occurrences")).filter(pl.col("occurrences") >= 20)
+    group_shares = (
+        _n.join(pl.DataFrame({"group": sorted(set(_group_of.values()))}), how="cross")
+        .join(_nearby.group_by("period", "group").agg(pl.len().alias("near")), on=["period", "group"], how="left")
+        .with_columns(pl.col("near").fill_null(0))
+        .with_columns((pl.col("near") / pl.col("occurrences") * 100).round(1).alias("per_100"))
+        .sort("period")
+    )
+    alt.Chart(group_shares).mark_line(point=True).encode(
+        x=alt.X("period:O", title="25-year period (only periods with at least 20 occurrences)"),
+        y=alt.Y("per_100:Q", title="Group words nearby, per 100 occurrences"),
+        color=alt.Color("group:N", title="Group"),
+        tooltip=["group", "period", "near", "occurrences", "per_100"],
+    ).properties(height=300)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** In the lecture, living bodies (cures, the torpedo fish, Galvani's frogs) were
+    a real strand before 1800, machines stayed low, and measurement words rose from the 1820s.
+    Do you see the same in the sample? Move *shock* from living bodies to a new group, or add a
+    group of your own (`light: light, lighting, lamp, lamps`). How much does the picture depend
+    on the lists?
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     compare_by = mo.ui.dropdown(
         options={
             "Topic": "topic",
@@ -780,18 +969,25 @@ def _(mo):
     mo.md(r"""
     ### TF-IDF: what is distinctive about one group? *(optional, if you have time)*
 
-    TF-IDF compares one group with **all the others at once**. Treat every decade (or every
-    topic) as one big "document". A word scores high if it is **frequent in this document**
-    (*term frequency*) but **found in few of the other documents** (*inverse document frequency*).
-    Words found in every document, like *the*, score zero. We only keep words that occur in at
-    least five texts of the group, so that a single text's names do not take over.
+    TF-IDF compares one "document" with **all the others at once**:
+
+    **tf-idf = tf × log(N ÷ df)**
+
+    - *tf* (term frequency): how often the word occurs in this document, per 1,000 words
+    - *N*: the number of documents; *df* (document frequency): how many of them contain the word
+    - log(N ÷ df) is zero for a word found in every document, like *the*, and larger the fewer
+      documents contain it. (We use the natural logarithm; the base only changes the scale.)
+
+    **What counts as a document is your choice**, and it decides which question TF-IDF answers.
+    Here a document is all the texts of one decade (what is new in the 1780s?), topic or journal (*Transactions*, *Proceedings* or *Abstracts*). The left chart shows the most frequent
+    words in the document, the right chart the words with the highest TF-IDF scores.
     """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    tfidf_by = mo.ui.dropdown(options={"Decade": "decade", "Topic": "topic"}, value="Decade", label="One document per")
+    tfidf_by = mo.ui.dropdown(options={"Decade": "decade", "Topic": "topic", "Journal": "journal"}, value="Decade", label="One document per")
     tfidf_by
     return (tfidf_by,)
 
@@ -817,23 +1013,46 @@ def _(pl, tfidf_by, text_word_counts, texts):
 @app.cell(hide_code=True)
 def _(mo, tfidf, tfidf_by):
     _values = sorted(tfidf[tfidf_by.value].unique().to_list())
-    tfidf_doc = mo.ui.dropdown(options={str(v): v for v in _values}, value=str(_values[0]), label="Show")
-    tfidf_doc
-    return (tfidf_doc,)
+    _default = next((str(v) for v in _values if str(v) in ("1780",)), str(_values[0]))
+    tfidf_doc = mo.ui.dropdown(options={str(v): v for v in _values}, value=_default, label="Show")
+    tfidf_min = mo.ui.slider(
+        start=1, stop=20, value=1, label="Only words found in at least this many texts of the document", show_value=True
+    )
+    mo.hstack([tfidf_doc, tfidf_min], justify="start", gap=2)
+    return tfidf_doc, tfidf_min
 
 
 @app.cell
-def _(alt, pl, tfidf, tfidf_by, tfidf_doc):
-    _top = (
-        tfidf.filter((pl.col(tfidf_by.value) == tfidf_doc.value) & (pl.col("n_texts") >= 5))
-        .sort("tf_idf", descending=True)
-        .head(20)
+def _(alt, mo, pl, tfidf, tfidf_by, tfidf_doc, tfidf_min):
+    _doc = tfidf.filter(pl.col(tfidf_by.value) == tfidf_doc.value)
+    _raw = _doc.sort("count", descending=True).head(15)
+    _top = _doc.filter(pl.col("n_texts") >= tfidf_min.value).sort("tf_idf", descending=True).head(15)
+    _tip = ["word", "count", "n_texts", "documents_with_word", "tf_idf"]
+    mo.hstack(
+        [
+            alt.Chart(_raw)
+            .mark_bar(color="#9a9a9a")
+            .encode(x=alt.X("count:Q", title="Occurrences"), y=alt.Y("word:N", sort="-x", title=None), tooltip=_tip)
+            .properties(height=alt.Step(16), width=260, title="Most frequent words"),
+            alt.Chart(_top)
+            .mark_bar()
+            .encode(x=alt.X("tf_idf:Q", title="TF-IDF"), y=alt.Y("word:N", sort="-x", title=None), tooltip=_tip)
+            .properties(height=alt.Step(16), width=260, title="Highest TF-IDF"),
+        ],
+        justify="start",
+        gap=2,
     )
-    alt.Chart(_top).mark_bar().encode(
-        x=alt.X("tf_idf:Q", title="TF-IDF"),
-        y=alt.Y("word:N", sort="-x", title=None),
-        tooltip=["word", "count", "n_texts", "documents_with_word", "tf_idf"],
-    ).properties(height=alt.Step(16), title=f"Most distinctive words: {tfidf_doc.selected_key}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Look at the 1780s (*phlogiston*, *Priestley*), then a decade of your choice.
+    Surnames and the names of instruments come up a lot: raise the minimum number of texts to 5
+    and see what disappears. Then make each journal a document: what distinguishes the short
+    *Abstracts* from the *Transactions*?
+    """)
     return
 
 
@@ -841,7 +1060,7 @@ def _(alt, pl, tfidf, tfidf_by, tfidf_doc):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 4 · Word embeddings (word2vec)
+    ## Part 4 · Embeddings: what does a word mean? (word2vec)
 
     Counting treats every word as separate: *telescope* and *microscope* are as unrelated as
     *telescope* and *blood*. **Word embeddings** instead give each word a list of numbers (here, 100 numbers),
@@ -962,10 +1181,17 @@ def _(mo, neighbours, nn_word):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ✏️ **Your turn.** Try: `energy`, `curious`, `spirit`, `philosopher`, `force`, `engine`,
+    ✏️ **Your turn.** Start with the lecture's `electricity`: before 1800 it sits among its own
+    vocabulary (*electrified*, *insulated*, *electrics*, the period's word for insulators); after
+    1800 among *voltaic*, *magneto* and *magnetism*, discussed with the other physical forces.
+    Then try: `energy`, `curious`, `spirit`, `philosopher`, `force`, `engine`,
     `virtue`, `experiment`, `air`. Where do the neighbours
     change between periods? Is that a change in **meaning**, in **what scientists studied**,
     or in **what kinds of texts the corpus contains**? Check with the concordance in Part 2.
+
+    **Comparing periods.** The two models were trained separately, so their numbers cannot be
+    compared directly: compare the *neighbour lists*. A word needs enough uses in both periods;
+    with only a few dozen uses the neighbours are mostly noise.
 
     ### Analogies
 
@@ -1062,6 +1288,29 @@ def _(alt, map_period, map_words, models, np, pl):
     )
     _missing = sorted(set(_words) - set(_known))
     _chart if not _missing else alt.vconcat(_chart, title=f"Not in the model: {', '.join(_missing)}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ---
+    ## Part 5 · Pitfalls: check before you claim
+
+    Three checks from the lecture, using the tools above.
+
+    1. **Read what a phrase means.** Type `electric fire` into the keyword-in-context box in
+       Part 2, then `electric fluid` and `electric current`. Does each phrase mean the same thing
+       in every example? Is *fire* always the substance, or sometimes ordinary fire?
+    2. **The source changes.** In the table in Part 1, filter by `journal`: the *Proceedings* and
+       *Abstracts* only start in the nineteenth century, and early texts are often letters
+       (`text_type`). A word that belongs to one kind of text rises and falls with it.
+    3. **Groups and lists are choices.** The collocate groups in Part 3 and the stopword list in
+       Part 2 were made by hand. Change one and see how much the result moves.
+
+    When you have a result, ask: did something happen, did the meaning change, or did the corpus
+    change?
+    """)
     return
 
 

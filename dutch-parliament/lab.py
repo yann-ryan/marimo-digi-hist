@@ -51,6 +51,7 @@ def _(mo):
     2. **Count words**: the simplest text analysis, and still one of the most useful
     3. **Find associations**: which words keep company, and what is typical of ministers, or of a party?
     4. **Explore word embeddings**: let the computer learn which words "mean" similar things
+    5. **Check the pitfalls**: what a count can and cannot show
 
     The texts are in Dutch (and in older Dutch spelling before 1947); the instructions are in English.
 
@@ -149,7 +150,7 @@ def _(read_data):
 def _(mo):
     mo.md(r"""
     The table above is interactive: sort by clicking a column name, or use the search and filter
-    buttons. Try to find the longest text, or a text ending in a death sentence.
+    buttons. Try to find the longest speech, or the speeches of one party or speaker.
 
     ### Read a text
 
@@ -236,7 +237,7 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 2 · Counting words
+    ## Part 2 · Frequency: how often?
 
     To count words, the computer first has to decide what a "word" is. Our rule is very simple:
     **lower-case everything, and treat every run of letters a–z as a word.** This is called
@@ -408,8 +409,12 @@ def _(mo):
     mo.md(r"""
     ✏️ **Your turn.** Try some of these, or your own ideas: `zoo, zo`; `mensch, mens`
     (spelling reforms!); `koning, koningin`; `burgers, onderdanen`; `oorlog, vrede`; `milieu`;
-    `vrouwen, kiesrecht`; `algemeen kiesrecht`. Does a rise or fall reflect a change in politics,
-    in the language, or in how the proceedings were recorded?
+    `vrouwen, kiesrecht`; `algemeen kiesrecht`.
+
+
+    For every line, ask the lecture's three questions. Did **something happen** (universal suffrage in 1917–19, decolonisation)? Did the
+    word's **meaning change** (*gemeenschap* as a transport connection or as the European Community)? Or did **the corpus change** (the spelling reforms of 1934 and 1947, OCR errors in older volumes, longer records)? Only the first two are
+    about the past.
 
     ### Phrases: n-grams
 
@@ -522,6 +527,94 @@ def _(mo):
     Which phrases are formulas of parliamentary speech (*de geachte afgevaardigde*, *mijnheer de
     voorzitter*) and which are names of institutions or policies?
 
+    ### What comes next? A simple language model
+
+    Count every phrase of a few words, and you can see what follows it, and predict the next
+    word. This is the lecture's n-gram model. Words that follow the same phrase tend to be
+    similar. Type one or more words; separate variants (such as old and new spellings) with
+    commas to count them together.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    next_phrase = mo.ui.text(value="de sociale", label="Words before:", full_width=True)
+    next_split = mo.ui.dropdown(
+        options={"Whole period": 0, "50-year periods": 50, "25-year periods": 25},
+        value="25-year periods",
+        label="Split into",
+    )
+    next_show = mo.ui.radio(
+        options={"share of what follows (%)": "share", "per million words": "per_million"},
+        value="share of what follows (%)",
+        inline=True,
+        label="Show:",
+    )
+    mo.vstack([next_phrase, mo.hstack([next_split, next_show], justify="start", gap=2)])
+    return next_phrase, next_show, next_split
+
+
+@app.cell
+def _(mo, next_phrase, next_show, next_split, pl, re, texts):
+    # several variants can be given, separated by commas ("electric, electrical"): they are counted together
+    _variants = [" ".join(re.findall(r"[a-zà-öø-ÿ]+", v.lower())) for v in next_phrase.value.split(",")]
+    _variants = [v for v in _variants if v]
+    mo.stop(not _variants, mo.md("Type one or more words above."))
+    _step = next_split.value
+    _start = (pl.col("year") // max(_step, 1)) * _step
+    _period = pl.lit("all years") if _step == 0 else pl.format("{}–{}", _start, _start + _step - 1)
+    _clean = texts.select(
+        _period.alias("period"), pl.col("text").str.to_lowercase().str.replace_all(r"[^a-zà-öø-ÿ]+", " ").alias("t")
+    )
+    # how many words each period has, to turn counts into "per million words"
+    _words = _clean.group_by("period").agg(pl.col("t").str.count_matches(r"[a-zà-öø-ÿ]+").sum().alias("words"))
+    # every occurrence of the words, plus the one word that follows; keep that last word
+    _found = (
+        _clean.select("period", pl.col("t").str.extract_all(r"\b(?:" + "|".join(_variants) + r") [a-zà-öø-ÿ]+").alias("m"))
+        .explode("m")
+        .drop_nulls("m")
+        .select("period", pl.col("m").str.extract(r"([a-zà-öø-ÿ]+)$", 1).alias("next_word"))
+    )
+    mo.stop(_found.height == 0, mo.md(f"*{next_phrase.value}* does not occur in the sample.").callout(kind="warn"))
+    _counts = _found.group_by("period", "next_word").agg(pl.len().alias("count"))
+    _per_period = _counts.group_by("period").agg(pl.col("count").sum().alias("all_next"))
+    _counts = (
+        _counts.join(_per_period, on="period")
+        .join(_words, on="period")
+        .with_columns(
+            (pl.col("count") / pl.col("all_next") * 100).round(1).alias("share"),
+            (pl.col("count") / pl.col("words") * 1_000_000).round(1).alias("per_million"),
+        )
+    )
+    _top = _found.group_by("next_word").agg(pl.len().alias("times")).sort("times", descending=True).head(15)
+    next_table = (
+        _counts.join(_top, on="next_word")
+        .pivot(on="period", index=["next_word", "times"], values=next_show.value, sort_columns=True)
+        .fill_null(0)
+        .sort("times", descending=True)
+    )
+    mo.vstack(
+        [
+            mo.md(
+                f"*{next_phrase.value}* occurs **{_found.height:,}** times in the sample, followed by "
+                f"{_found['next_word'].n_unique():,} different words. The 15 most common, with their "
+                f"{'share of what follows (%)' if next_show.value == 'share' else 'occurrences per million words'} in each period (*times* = number of occurrences in all periods):"
+            ),
+            mo.ui.table(next_table, selection=None, page_size=15, show_column_summaries=False),
+        ]
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Try `de minister van`, `het algemeen`, `de europese`, `onze koloniën`, `de staat`,
+    `de arbeiders`. Which continuations appear or disappear between periods?
+    Predicting the next word is also how large language models such as ChatGPT are trained,
+    with much longer contexts.
+
     ### Keyword in context
 
     A count tells you *how often*, not *how*. Always go back to the text. This shows every
@@ -577,7 +670,7 @@ def _(kwic_n, kwic_word, mo, pl, random, re, texts):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 3 · Association and distinctive words
+    ## Part 3 · Association: in what company?
 
     ### Collocations: the company a word keeps
 
@@ -784,12 +877,18 @@ def _(mo):
     mo.md(r"""
     ### TF-IDF: what is distinctive about one group? *(optional, if you have time)*
 
-    TF-IDF compares one group with **all the others at once**. Treat every decade (or every
-    party) as one big "document". A word scores high if it is **frequent in this document**
-    (*term frequency*) but **found in few of the other documents** (*inverse document frequency*).
-    Words found in every document, like *de*, score zero. With decades as documents, look at
-    what TF-IDF picks out before and after the spelling reforms of 1934 and 1947. We only keep words that occur in at
-    least five texts of the group, so that a single text's names do not take over.
+    TF-IDF compares one "document" with **all the others at once**:
+
+    **tf-idf = tf × log(N ÷ df)**
+
+    - *tf* (term frequency): how often the word occurs in this document, per 1,000 words
+    - *N*: the number of documents; *df* (document frequency): how many of them contain the word
+    - log(N ÷ df) is zero for a word found in every document, like *de*, and larger the fewer
+      documents contain it. (We use the natural logarithm; the base only changes the scale.)
+
+    **What counts as a document is your choice**, and it decides which question TF-IDF answers.
+    Here a document is all the speeches of one decade (look at the decades before and after the spelling reforms of 1934 and 1947) or party. The left chart shows the most frequent
+    words in the document, the right chart the words with the highest TF-IDF scores.
     """)
     return
 
@@ -822,23 +921,45 @@ def _(pl, tfidf_by, text_word_counts, texts):
 @app.cell(hide_code=True)
 def _(mo, tfidf, tfidf_by):
     _values = sorted(tfidf[tfidf_by.value].unique().to_list())
-    tfidf_doc = mo.ui.dropdown(options={str(v): v for v in _values}, value=str(_values[0]), label="Show")
-    tfidf_doc
-    return (tfidf_doc,)
+    _default = next((str(v) for v in _values if str(v) in ("1930",)), str(_values[0]))
+    tfidf_doc = mo.ui.dropdown(options={str(v): v for v in _values}, value=_default, label="Show")
+    tfidf_min = mo.ui.slider(
+        start=1, stop=20, value=1, label="Only words found in at least this many speeches of the document", show_value=True
+    )
+    mo.hstack([tfidf_doc, tfidf_min], justify="start", gap=2)
+    return tfidf_doc, tfidf_min
 
 
 @app.cell
-def _(alt, pl, tfidf, tfidf_by, tfidf_doc):
-    _top = (
-        tfidf.filter((pl.col(tfidf_by.value) == tfidf_doc.value) & (pl.col("n_texts") >= 5))
-        .sort("tf_idf", descending=True)
-        .head(20)
+def _(alt, mo, pl, tfidf, tfidf_by, tfidf_doc, tfidf_min):
+    _doc = tfidf.filter(pl.col(tfidf_by.value) == tfidf_doc.value)
+    _raw = _doc.sort("count", descending=True).head(15)
+    _top = _doc.filter(pl.col("n_texts") >= tfidf_min.value).sort("tf_idf", descending=True).head(15)
+    _tip = ["word", "count", "n_texts", "documents_with_word", "tf_idf"]
+    mo.hstack(
+        [
+            alt.Chart(_raw)
+            .mark_bar(color="#9a9a9a")
+            .encode(x=alt.X("count:Q", title="Occurrences"), y=alt.Y("word:N", sort="-x", title=None), tooltip=_tip)
+            .properties(height=alt.Step(16), width=260, title="Most frequent words"),
+            alt.Chart(_top)
+            .mark_bar()
+            .encode(x=alt.X("tf_idf:Q", title="TF-IDF"), y=alt.Y("word:N", sort="-x", title=None), tooltip=_tip)
+            .properties(height=alt.Step(16), width=260, title="Highest TF-IDF"),
+        ],
+        justify="start",
+        gap=2,
     )
-    alt.Chart(_top).mark_bar().encode(
-        x=alt.X("tf_idf:Q", title="TF-IDF"),
-        y=alt.Y("word:N", sort="-x", title=None),
-        tooltip=["word", "count", "n_texts", "documents_with_word", "tf_idf"],
-    ).properties(height=alt.Step(16), title=f"Most distinctive words: {tfidf_doc.selected_key}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Compare the 1930s with the 1950s: how much of what TF-IDF picks out is
+    spelling (*eene*, *zoo*, *regeering* against *grote*, *zoals*)? Raise the minimum number of
+    speeches to 5 and see which names disappear. Then make each party a document.
+    """)
     return
 
 
@@ -846,7 +967,7 @@ def _(alt, pl, tfidf, tfidf_by, tfidf_doc):
 def _(mo):
     mo.md(r"""
     ---
-    ## Part 4 · Word embeddings (word2vec)
+    ## Part 4 · Embeddings: what does a word mean? (word2vec)
 
     Counting treats every word as separate: *arbeiders* and *werklieden* are as unrelated as
     *arbeiders* and *koning*. **Word embeddings** instead give each word a list of numbers (here, 100 numbers),
@@ -968,10 +1089,18 @@ def _(mo, neighbours, nn_word):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ✏️ **Your turn.** Try: `burgers`, `gemeenschap`, `godsdienst`, `vrouwen`, `arbeiders`,
+    ✏️ **Your turn.** Start with the lecture's two words. `burgers`: before 1918 close to
+    *staatsburgers*, *ingezetenen* and *medeburgers*; after 1918 to *ondernemers*, *consumenten*
+    and *belastingbetaler*. `gemeenschap`: before 1918 close to *verbinding* and *spoorwegverkeer*
+    (a transport connection); after 1918 to *unie* and *europese* (the European Communities).
+    Then try `godsdienst`, `vrouwen`, `arbeiders`,
     `democratie`, `socialisme`, `indië`, `minister`. Where do the neighbours
     change between periods? Is that a change in **meaning**, in **what parliament debated**,
     or in **what kinds of texts the corpus contains**? Check with the concordance in Part 2.
+
+    **Comparing periods.** The two models were trained separately, so their numbers cannot be
+    compared directly: compare the *neighbour lists*. A word needs enough uses in both periods;
+    with only a few dozen uses the neighbours are mostly noise.
 
     ### Analogies
 
@@ -1068,6 +1197,30 @@ def _(alt, map_period, map_words, models, np, pl):
     )
     _missing = sorted(set(_words) - set(_known))
     _chart if not _missing else alt.vconcat(_chart, title=f"Not in the model: {', '.join(_missing)}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ---
+    ## Part 5 · Pitfalls: check before you claim
+
+    Three checks from the lecture, using the tools above.
+
+    1. **Spelling is not meaning.** Plot `zoo, zo` and `mensch, mens` in *Words over time*. A
+       word that seems to disappear in the 1930s or 1940s may only have changed its spelling:
+       count both forms together before making a claim.
+    2. **The source changes.** Older volumes were OCR'd: look at the neighbours of `indië` (you
+       will find *lndië*) or `minister` (*miuister*). Early members sometimes spoke French. Party
+       is missing for about a third of speeches, so a comparison of parties leaves many out.
+    3. **A peak needs reading.** Pick the highest point on one of your trend lines and read three
+       of the speeches behind it in the keyword-in-context box. (In the lecture, *asteroid* in
+       American newspapers turned out to be a racehorse.)
+
+    When you have a result, ask: did something happen, did the meaning change, or did the corpus
+    change?
+    """)
     return
 
 

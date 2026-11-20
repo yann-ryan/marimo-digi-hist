@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Counting the Past</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* Layout: a 1600×900 stage scaled to the window; paper slides for content, ink slides for section breaks.
+   Caslon (the type of 18th-century English print) meets IBM Plex (Busa's punch-card machines). */
+:root {
+  --paper: #F7F8F6;  --paper-2: #EBEFF0;  --ink: #17222D;  --ink-2: #4A5763;  --muted: #6E7A84;  --rule: #D6DCDF;
+  --night: #15202B;  --night-2: #223241;  --night-ink: #EEF2F4;  --night-muted: #9DAAB5;
+  --accent: #1c5cab;  --hot: #b8461b;  --brass: #D9A548;
+  --s1: #2a78d6;  --s2: #eb6834;  --s3: #1baf7a;  --s4: #eda100;  --s5: #e87ba4;
+  --display: "Libre Caslon Display", "Libre Caslon Text", Georgia, "Times New Roman", serif;
+  --serif: "Libre Caslon Text", Georgia, "Times New Roman", serif;
+  --sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body { background: var(--night); color: var(--ink); font-family: var(--sans); overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0; }
+#viewport { position: fixed; inset: 0; overflow: hidden; }
+#stage { width: 1600px; height: 900px; position: absolute; left: 50%; top: 50%; transform-origin: center center; }
+.slide { position: absolute; inset: 0; background: var(--paper); padding: 72px 96px 96px; display: flex; flex-direction: column; gap: 36px;
+  opacity: 0; visibility: hidden; transition: opacity .45s ease, transform .45s ease, visibility 0s .45s; transform: translateX(24px); overflow: hidden; }
+.slide.current { opacity: 1; visibility: visible; transform: none; transition: opacity .45s ease, transform .45s ease, visibility 0s; }
+.slide.past { transform: translateX(-24px); }
+.slide.dark { background: var(--night); color: var(--night-ink); }
+h1, h2, h3 { margin: 0; font-weight: 400; text-wrap: balance; }
+h2 { font-family: var(--display); font-size: 56px; line-height: 1.08; color: var(--ink); letter-spacing: -0.005em; max-width: 1300px; }
+.dark h2 { color: var(--night-ink); }
+p { margin: 0; }
+.lead { font-family: var(--serif); font-size: 34px; line-height: 1.3; color: var(--ink); max-width: 1250px; }
+.point { font-family: var(--serif); font-size: 29px; line-height: 1.3; color: var(--ink); margin-top: auto; max-width: 1300px; }
+.point b, .lead b { color: var(--hot); font-weight: 700; }
+.src { position: absolute; left: 96px; bottom: 44px; font-size: 16px; color: var(--muted); max-width: 1100px; font-style: italic; }
+.eyebrow { font-family: var(--mono); font-size: 18px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.dark .eyebrow { color: var(--brass); }
+.row { display: flex; gap: 32px; min-width: 0; }
+.col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.grow { flex: 1; min-width: 0; }
+.tile { background: var(--paper-2); border-radius: 14px; padding: 28px 30px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tile h3 { font-family: var(--serif); font-weight: 700; font-size: 30px; color: var(--accent); }
+.tile p { font-size: 26px; line-height: 1.35; color: var(--ink-2); }
+.tile.off { background: transparent; border: 1.5px solid var(--rule); }
+.tile.off h3, .tile.off p { color: var(--muted); }
+.badge { font-family: var(--mono); font-size: 15px; letter-spacing: .1em; text-transform: uppercase; background: var(--hot); color: #fff; border-radius: 6px; padding: 4px 10px; align-self: flex-start; }
+.num { font-family: var(--mono); font-size: 20px; color: var(--accent); }
+.big { white-space: nowrap; font-family: var(--display); font-size: 96px; line-height: 1; color: var(--accent); font-variant-numeric: lining-nums tabular-nums; }
+.big-l { font-size: 24px; color: var(--muted); margin-top: 10px; }
+.mono { font-family: var(--mono); }
+img.fig { display: block; object-fit: contain; max-width: 100%; }
+.frame { background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 0 var(--rule), 0 12px 30px -18px rgba(23,34,45,.35); }
+
+/* motion: elements marked .a rise in when their slide arrives, staged by --d */
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes grow-y { from { transform: scaleY(0); } to { transform: none; } }
+@keyframes mark { from { background-color: transparent; color: var(--ink); } to { background-color: rgba(235,104,52,.16); color: var(--hot); } }
+.slide.current .a { animation: rise .6s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--d, 0) * 110ms + 150ms); }
+.slide.current .f { animation: fade .6s ease both; animation-delay: calc(var(--d, 0) * 110ms + 150ms); }
+.slide.current .draw { stroke-dasharray: 1; animation: draw 1.4s cubic-bezier(.4,0,.2,1) both; animation-delay: calc(var(--d, 0) * 250ms + 350ms); }
+.slide.current .bx { transform-box: fill-box; transform-origin: left center; animation: grow-x .8s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--d, 0) * 60ms + 300ms); }
+.slide.current .by { transform-box: fill-box; transform-origin: center bottom; animation: grow-y .7s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--d, 0) * 35ms + 300ms); }
+.step { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .45s ease; }
+.step.on { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .slide, .slide.current { transition: none; transform: none; }
+  .slide.current .a, .slide.current .f, .slide.current .draw, .slide.current .bx, .slide.current .by, .slide.current .err { animation: none; }
+}
+
+/* dividers */
+.divider { justify-content: center; gap: 22px; padding-left: 128px; }
+.divider .part { font-family: var(--mono); font-size: 22px; letter-spacing: .2em; text-transform: uppercase; color: var(--brass); }
+.divider h2 { font-size: 92px; }
+.divider .sub { font-size: 30px; color: var(--night-muted); max-width: 1100px; line-height: 1.35; }
+.track { position: absolute; left: 128px; right: 128px; bottom: 96px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.track div { border-top: 4px solid #33475A; padding-top: 12px; font-size: 19px; color: #6F8293; font-family: var(--mono); letter-spacing: .04em; }
+.track div.done { border-color: #7F93A5; color: #A9B7C3; }
+.track div.cur { border-color: var(--brass); color: var(--brass); font-weight: 500; }
+/* persistent mini tracker on content slides */
+#mini { position: absolute; right: 96px; top: 40px; display: flex; gap: 6px; align-items: center; z-index: 5; pointer-events: none; }
+#mini span { width: 34px; height: 4px; border-radius: 2px; background: var(--rule); }
+#mini span.done { background: #A9B5BE; }
+#mini span.cur { background: var(--accent); }
+#mini em { font-style: normal; font-family: var(--mono); font-size: 15px; color: var(--muted); margin-left: 10px; letter-spacing: .05em; }
+#mini.hide { display: none; }
+
+/* title slide */
+.title-slide { justify-content: center; padding-left: 128px; gap: 26px; }
+.title-slide h1 { font-family: var(--display); font-size: 150px; line-height: .95; color: var(--night-ink); letter-spacing: -0.01em; }
+.title-slide .sub { font-family: var(--serif); font-style: italic; font-size: 40px; color: var(--brass); }
+.title-slide .by { font-size: 24px; color: var(--night-muted); font-family: var(--mono); letter-spacing: .06em; }
+.wordfield { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.wordfield span { position: absolute; font-family: var(--mono); color: #2B3D4E; white-space: nowrap; }
+.wordfield span.hit { color: var(--brass); }
+
+/* quote + KWIC */
+.quote { font-family: var(--serif); font-style: italic; font-size: 44px; line-height: 1.3; color: var(--ink); }
+.quote b { font-style: italic; color: var(--hot); }
+.kwic { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto minmax(0, 1fr); column-gap: 18px; row-gap: 0; font-family: var(--mono); font-size: 24px; align-items: center; }
+.kwic > div { padding: 15px 0; border-bottom: 1px solid var(--rule); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kwic .y { color: var(--muted); font-size: 19px; }
+.kwic .l { text-align: right; direction: rtl; color: var(--ink-2); }
+.kwic .l bdi { direction: ltr; unicode-bidi: isolate; }
+.kwic .k { color: var(--hot); font-weight: 500; text-align: center; padding-inline: 8px; }
+.kwic .r { color: var(--ink-2); }
+
+/* charts */
+.chart { position: relative; min-width: 0; }
+.chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.chart text { font-family: var(--sans); fill: var(--muted); font-size: 17px; }
+.chart .grid { stroke: #E1E5E7; stroke-width: 1; }
+.chart .base { stroke: #B9C2C8; stroke-width: 1.5; }
+.chart .lab { fill: var(--ink); font-size: 20px; font-weight: 600; }
+.chart .val { fill: var(--ink-2); font-size: 18px; font-family: var(--mono); }
+.chart .ttl { fill: var(--ink-2); font-size: 18px; }
+.chart .hit { fill: transparent; cursor: crosshair; }
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--ink); color: var(--paper); font: 500 14px/1.35 var(--sans); padding: 7px 10px; border-radius: 6px; opacity: 0; transition: opacity .12s; white-space: nowrap; }
+#tip.on { opacity: 1; }
+.legend { display: flex; gap: 26px; font-size: 21px; color: var(--ink-2); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 26px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 10px; }
+
+/* heat table */
+.heat { border-collapse: separate; border-spacing: 4px; font-variant-numeric: tabular-nums; }
+.heat th { font-family: var(--mono); font-weight: 400; font-size: 17px; color: var(--muted); padding: 0 6px 6px; }
+.heat td { width: 118px; height: 40px; text-align: center; font-family: var(--mono); font-size: 19px; border-radius: 5px; }
+.heat td.w { width: auto; text-align: right; padding-right: 16px; font-family: var(--serif); font-size: 24px; color: var(--ink); background: none; }
+.slide.current .heat td.c { animation: fade .5s ease both; animation-delay: calc(var(--d, 0) * 230ms + 300ms); }
+
+/* tokens */
+.tok { display: flex; flex-wrap: wrap; gap: 10px; }
+.w2v { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; }
+.w2v span { font-family: var(--mono); font-size: 17px; color: var(--muted); }
+.cells { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
+.cells i { display: block; height: 26px; border-radius: 3px; }
+.tok span { font-family: var(--mono); font-size: 26px; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 6px; }
+.tok span.x { background: var(--hot); }
+
+/* OCR */
+.ocr { font-family: var(--mono); font-size: 23px; line-height: 1.55; color: var(--ink-2); background: var(--paper-2); border-radius: 12px; padding: 22px 26px; }
+.ocr .err { color: var(--hot); border-radius: 3px; padding: 0 2px; }
+.slide.current .ocr .err { animation: mark .5s ease both; animation-delay: calc(var(--d, 0) * 70ms + 900ms); }
+
+/* chips, flow */
+.chip { font-family: var(--sans); font-weight: 600; font-size: 26px; background: var(--accent); color: #fff; border-radius: 10px; padding: 18px 22px; text-align: center; }
+.chip.hot { background: var(--hot); }
+.chip.ghost { background: var(--paper-2); color: var(--ink); font-weight: 500; }
+.arrow { color: var(--muted); font-size: 30px; align-self: center; }
+.cmp { display: grid; grid-template-columns: 260px 1fr 1fr; gap: 14px 22px; align-items: center; }
+.cmp .w { font-family: var(--display); font-size: 46px; color: var(--hot); }
+.cmp .h { font-family: var(--mono); font-size: 20px; letter-spacing: .1em; color: var(--muted); }
+.cmp .c { background: var(--paper-2); border-radius: 10px; padding: 18px 22px; font-size: 26px; color: var(--ink); }
+.cmp .c.dim { color: var(--muted); font-style: italic; }
+table.plain { border-collapse: collapse; font-size: 24px; font-variant-numeric: tabular-nums; }
+table.plain th { text-align: left; font-family: var(--mono); font-weight: 500; font-size: 18px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; padding: 10px 18px; border-bottom: 2px solid var(--ink); }
+table.plain td { padding: 11px 18px; border-bottom: 1px solid var(--rule); color: var(--ink); }
+table.plain td.n { text-align: right; font-family: var(--mono); }
+.mat td { width: 150px; height: 66px; text-align: center; font-family: var(--mono); font-size: 28px; border-radius: 8px; }
+.mat th { font-family: var(--mono); font-weight: 400; font-size: 22px; color: var(--muted); padding: 6px; }
+.mat td.w { text-align: right; padding-right: 22px; font-family: var(--serif); font-size: 30px; width: auto; }
+.mat { border-collapse: separate; border-spacing: 6px; }
+
+/* UI chrome */
+#ui { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 6px; align-items: center; z-index: 20; }
+#ui button { font: 500 14px var(--sans); background: rgba(21,32,43,.78); color: #E8EDF0; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+#ui button:hover { background: rgba(21,32,43,.95); }
+#ui button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+@media (max-width: 560px) { #bf, #help { display: none; } #ui button { padding: 7px 9px; } }
+body.pv #viewport { right: 42%; }
+body.pv #ui, body.pv #help, body.pv #notes { display: none !important; }
+#presenter { position: fixed; top: 0; right: 0; bottom: 0; width: 42%; background: #0F1821; color: #E8EDF0; padding: 24px 28px; display: flex; flex-direction: column; gap: 12px; font-family: var(--sans); overflow: hidden; }
+#presenter[hidden] { display: none; }
+.pv-top { display: flex; gap: 16px; align-items: center; font: 500 22px var(--mono); }
+#pv-time { color: var(--brass); }
+.pv-top button, .pv-nav button { font: 500 15px var(--sans); background: #22313F; color: #E8EDF0; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; }
+.pv-top button:focus-visible, .pv-nav button:focus-visible { outline: 2px solid var(--brass); }
+.pv-label { font: 500 14px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: #8FA0AE; margin-top: 6px; }
+#pv-notes { flex: 1; overflow: auto; font-size: 21px; line-height: 1.5; color: #F2F5F7; white-space: pre-wrap; min-height: 0; }
+#pv-next { font-family: var(--serif); font-size: 22px; color: #C9D3DA; }
+.pv-nav { display: flex; gap: 10px; }
+#count { font: 500 14px var(--mono); color: #C9D3DA; background: rgba(21,32,43,.78); padding: 8px 10px; border-radius: 8px; }
+#notes { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(60px + env(safe-area-inset-bottom, 0px)); max-height: 34vh; overflow: auto; background: rgba(21,32,43,.96); color: #E8EDF0; font: 16px/1.55 var(--sans); padding: 18px 22px; border-radius: 12px; z-index: 19; }
+#help { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); font: 13px var(--mono); color: #9DAAB5; z-index: 20; background: rgba(21,32,43,.78); padding: 6px 10px; border-radius: 8px; transition: opacity 1s; }
+</style>
+
+<div id="viewport"><div id="stage">
+
+<!-- ============ OPENING ============ -->
+<section class="slide dark title-slide" data-part="0" data-notes="Lecture in the week before the hands-on lab. Theory and examples here; next week students try the methods themselves in marimo notebooks on the Old Bailey Proceedings, the Royal Society's journals and the Dutch parliament.">
+  <div class="wordfield" id="wordfield" aria-hidden="true"></div>
+  <p class="eyebrow a" style="--d:1">Digital History · 2026–27</p>
+  <h1 class="a" style="--d:2">Counting<br>the past</h1>
+  <p class="sub a" style="--d:3">Quantitative text analysis for historical research</p>
+  <p class="by a" style="--d:4">Dr Yann Ryan</p>
+</section>
+
+<section class="slide" data-part="0" data-notes="Roadmap. Part 1: why historians count words at all, what the field is called and what methods exist. Part 2: where the data comes from. Parts 3–5: the three methods we use in the lab, each opened with a method card (question, how it works, good for, watch out). Part 6: what goes wrong. The bar at the bottom right shows where we are. Examples come from the three corpora used in the lab: trials at the Old Bailey (1674–1913), the Royal Society's journals (1665–1920) and the debates of the Dutch parliament (1814–2012).">
+  <h2 class="a">Outline</h2>
+  <div class="row" style="gap:14px; align-items:stretch">
+    <div class="chip ghost a grow" style="--d:1">1 · Why count?</div>
+    <div class="chip ghost a grow" style="--d:2">2 · Data</div>
+    <div class="chip a grow" style="--d:3">3 · Frequency</div>
+    <div class="chip a grow" style="--d:4">4 · Association</div>
+    <div class="chip a grow" style="--d:5">5 · Embeddings</div>
+    <div class="chip ghost a grow" style="--d:6">6 · Pitfalls</div>
+  </div>
+  <p class="a" style="--d:7; font-size:22px; color:var(--muted)">Blue: the three methods you will try in next week’s lab</p>
+  <p class="point a" style="--d:8">Examples from three corpora: Old Bailey trials, the Royal Society’s journals and Dutch parliamentary debates.</p>
+</section>
+
+<!-- ============ PART 1 ============ -->
+<section class="slide dark divider" data-part="1" data-notes="The big picture before any method: what text analysis is for, what it is called, what it can and can't do.">
+  <p class="part a">Part 1</p><h2 class="a" style="--d:1">Why count words?</h2><p class="sub a" style="--d:2">What text analysis is for, what it is called, and what it can do</p>
+  <div class="track f" style="--d:3"></div>
+</section>
+
+<section class="slide" data-part="1" data-notes="Five reasons. Scale: the Old Bailey Proceedings are about 123 million words, roughly three years of reading at eight hours a day; the Royal Society's journals another 64 million. Change: some patterns exist only across many texts, e.g. when 'electric fire' disappears. Comparison: what is typical of one group, period or place, compared with another. Finding: search and concordance point you to the few texts worth reading closely. Checking: a historian's generalisation can be tested against the whole record, and the test can be repeated.">
+  <h2 class="a">Why do text analysis?</h2>
+  <div class="row" style="gap:20px">
+    <div class="tile a grow" style="--d:1"><span class="num">01</span><h3>Scale</h3><p>more than anyone can read</p></div>
+    <div class="tile a grow" style="--d:2"><span class="num">02</span><h3>Change</h3><p>patterns no single text shows</p></div>
+    <div class="tile a grow" style="--d:3"><span class="num">03</span><h3>Comparison</h3><p>what is typical of a group</p></div>
+    <div class="tile a grow" style="--d:4"><span class="num">04</span><h3>Finding</h3><p>where to read closely</p></div>
+    <div class="tile a grow" style="--d:5"><span class="num">05</span><h3>Checking</h3><p>test a claim against the whole record</p></div>
+  </div>
+  <p class="point a" style="--d:7">The Old Bailey Proceedings contain about 123 million words, roughly three years of full-time reading.</p>
+</section>
+
+<section class="slide" data-part="1" data-notes="Close reading: Benjamin Franklin's letter to Peter Collinson, dated Philadelphia 1 October 1752 and read at the Royal Society on 21 December 1752 (Philosophical Transactions 47). How to make a kite that draws 'the electric fire' from a thunder-cloud; it claims to demonstrate that lightning and electricity are the same. For Franklin electricity is a fire: matter you can draw off, store in a Leyden jar and use to light spirits. Distant reading: 'electric fire' and 'electric current' per million words in the Royal Society's journals, 25-year periods. 'Electric fire' peaks in Franklin's time and is gone by 1800; 'electric current' takes off after 1825 (Volta's pile 1800, Ørsted 1820, Faraday). The letter shows what electricity was to Franklin; the counts show how long that idea was in use. The lecture combines reading and counting in this way throughout.">
+  <h2 class="a">Close and distant reading</h2>
+  <div class="row grow" style="gap:56px">
+    <div class="col" style="width:560px">
+      <p class="eyebrow a" style="--d:1">Close · one letter, 1752</p>
+      <p class="quote a" style="--d:2">“…the pointed wire will draw the <b>electric fire</b> from them [the clouds]…”</p>
+      <p class="a" style="--d:3; font-size:22px; color:var(--muted)">Benjamin Franklin to Peter Collinson, read at the Royal Society</p>
+    </div>
+    <div class="col grow">
+      <p class="eyebrow a" style="--d:1">Distant · 64 million words</p>
+      <div class="chart grow" data-chart="fire"></div>
+    </div>
+  </div>
+  <p class="point a" style="--d:6">The letter shows how Franklin understood electricity; the counts show when that understanding was common.</p>
+  <p class="src">Philosophical Transactions 47 (1751–52). Per million words, Royal Society Corpus 6.0.4 Open (17,520 texts, 1665–1920).</p>
+</section>
+
+<section class="slide" data-part="1" data-notes="Busa: the Index Thomisticus, the first large-scale humanities computing project, built with IBM. Cliometrics: econometrics applied to history, e.g. Fogel and Engerman's Time on the Cross; big claims, big controversies. 1980s backlash: the linguistic and cultural turn, Foucault, microhistories like Ginzburg's The Cheese and the Worms. 1990s–2000s: mass digitisation and tools to analyse language. What is different now is that historians count the words in their sources as well as numerical data.">
+  <h2 class="a">Computers and historians since the 1940s</h2>
+  <div class="row" style="gap:28px; align-items:flex-end">
+    <div class="col a grow" style="--d:1"><img class="fig" src="media/image-4-1.jpeg" alt="Roberto Busa at an IBM machine" style="height:220px; margin:auto"><p class="num">1940s</p><h3 style="font-family:var(--serif); font-size:28px">Busa’s concordance</h3></div>
+    <div class="col a grow" style="--d:2"><img class="fig" src="media/image-4-2.jpeg" alt="Cover of Time on the Cross" style="height:220px; margin:auto"><p class="num">1960s–70s</p><h3 style="font-family:var(--serif); font-size:28px">Cliometrics</h3></div>
+    <div class="col a grow" style="--d:3"><img class="fig" src="media/image-4-3.jpeg" alt="Cover of The Cheese and the Worms" style="height:220px; margin:auto"><p class="num">1980s</p><h3 style="font-family:var(--serif); font-size:28px">The backlash</h3></div>
+    <div class="col a grow" style="--d:4"><img class="fig" src="media/image-4-4.jpg" alt="Front page of the Haagsche Courant" style="height:220px; margin:auto"><p class="num">1990s–2000s</p><h3 style="font-family:var(--serif); font-size:28px">Digitisation</h3></div>
+    <div class="col a grow" style="--d:5"><img class="fig" src="media/image-4-5.png" alt="Delpher newspaper search" style="height:220px; margin:auto"><p class="num">Now</p><h3 style="font-family:var(--serif); font-size:28px">Language at scale</h3></div>
+  </div>
+  <p class="point a" style="--d:7">Historians now count the words in their sources as well as numerical data.</p>
+</section>
+
+<section class="slide" data-part="1" data-notes="The same family of methods travels under different names. Corpus linguistics (from the 1960s): language in large, designed corpora; gave us collocation and keyness. Humanities computing, later digital humanities: from Busa onwards. Distant reading: Franco Moretti's term (2000) for studying literature through patterns across thousands of books. Culturomics: Michel et al. (2011), Google Books and the Ngram Viewer. Cultural analytics: Lev Manovich and others, culture as data. NLP and text mining: the computer-science toolbox. For historians: digital or computational history. Reading: Moretti, Distant Reading (2013); Ted Underwood, Distant Horizons (2019); Jo Guldi, The Dangerous Art of Text Mining (2023).">
+  <h2 class="a">Names for the field</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:20px">
+    <div class="tile a" style="--d:1"><h3>Corpus linguistics</h3><p>language at scale</p></div>
+    <div class="tile a" style="--d:2"><h3>Digital humanities</h3><p>from Busa onwards</p></div>
+    <div class="tile a" style="--d:3"><h3>Distant reading</h3><p>patterns across thousands of books</p></div>
+    <div class="tile a" style="--d:4"><h3>Culturomics</h3><p>Google Books and n-grams</p></div>
+    <div class="tile a" style="--d:5"><h3>Cultural analytics</h3><p>culture as data</p></div>
+    <div class="tile a" style="--d:6"><h3>NLP and text mining</h3><p>the computer-science toolbox</p></div>
+  </div>
+  <p class="src">Reading: Moretti, Distant Reading (2013) · Underwood, Distant Horizons (2019) · Guldi, The Dangerous Art of Text Mining (2023)</p>
+</section>
+
+<section class="slide" data-part="1" data-notes="An overview of what is available; we do four today. Search and concordance: find every occurrence and read it in context. Frequency and n-grams: how often, and when. Collocation and keyness: which words keep company, and what distinguishes one set of texts from another (MI, TF-IDF). Word embeddings: meaning from context, and how it shifts. Not today: topic models (LDA; what are these texts about?), named entities and places (who and where; geoparsing), text reuse (who copied whom; e.g. passim, used to trace news across newspapers), classification (sorting texts into categories you define, with supervised machine learning, including sentiment), and large language models (summarising, extracting, asking questions of a corpus; powerful but hard to check). All of them start from the same move: turning text into countable units.">
+  <h2 class="a">A map of methods</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:16px">
+    <div class="tile a" style="--d:1"><span class="badge">today</span><h3>Search &amp; concordance</h3><p>Where is it? Read it in context</p></div>
+    <div class="tile a" style="--d:2"><span class="badge">today</span><h3>Frequency &amp; n-grams</h3><p>How often, and when?</p></div>
+    <div class="tile a" style="--d:3"><span class="badge">today</span><h3>Collocation &amp; keyness</h3><p>In what company? What is typical?</p></div>
+    <div class="tile a" style="--d:4"><span class="badge">today</span><h3>Word embeddings</h3><p>What does it mean? How did it change?</p></div>
+    <div class="tile off a" style="--d:5"><h3>Topic models</h3><p>What are these texts about?</p></div>
+    <div class="tile off a" style="--d:6"><h3>Names &amp; places</h3><p>Who and where?</p></div>
+    <div class="tile off a" style="--d:7"><h3>Text reuse</h3><p>Who copied whom?</p></div>
+    <div class="tile off a" style="--d:8"><h3>Classification</h3><p>Which category is this text?</p></div>
+    <div class="tile off a" style="--d:9"><h3>Large language models</h3><p>Summarise, extract, ask</p></div>
+  </div>
+</section>
+
+<section class="slide" data-part="1" data-notes="The research loop, with today's electricity example under each step. Question: what was electricity to the people who studied it? Corpus: the Royal Society's journals, 1665–1920. Prepare: lower-case, split into words, treat 'electric' and 'electrical' as one. Count: which noun follows 'electric' in each period. Read: go back to Franklin, Cavendish, Faraday. Interpret: electricity changes from a substance to a measured quantity. The results usually lead to a revised question. Every method today belongs to the counting step; the other steps depend on historical knowledge.">
+  <h2 class="a">The research process</h2>
+  <div class="row" style="gap:10px; align-items:flex-start">
+    <div class="col a grow" style="--d:1"><div class="chip">Question</div><p style="font-size:21px; color:var(--muted); text-align:center">What was electricity?</p></div><span class="arrow a" style="--d:1">→</span>
+    <div class="col a grow" style="--d:2"><div class="chip">Corpus</div><p style="font-size:21px; color:var(--muted); text-align:center">Royal Society journals</p></div><span class="arrow a" style="--d:2">→</span>
+    <div class="col a grow" style="--d:3"><div class="chip">Prepare</div><p style="font-size:21px; color:var(--muted); text-align:center">electric = electrical</p></div><span class="arrow a" style="--d:3">→</span>
+    <div class="col a grow" style="--d:4"><div class="chip hot">Count</div><p style="font-size:21px; color:var(--muted); text-align:center">the word after ‘electric’</p></div><span class="arrow a" style="--d:4">→</span>
+    <div class="col a grow" style="--d:5"><div class="chip">Read</div><p style="font-size:21px; color:var(--muted); text-align:center">Franklin, Faraday…</p></div><span class="arrow a" style="--d:5">→</span>
+    <div class="col a grow" style="--d:6"><div class="chip">Interpret</div><p style="font-size:21px; color:var(--muted); text-align:center">a substance becomes a quantity</p></div>
+  </div>
+  <p class="a" style="--d:8; font-size:24px; color:var(--muted); text-align:center; border-top:2px dashed var(--rule); padding-top:14px">The results usually lead to a revised question</p>
+  <p class="point a" style="--d:9">The methods in this lecture belong to the counting step; the other steps depend on historical knowledge.</p>
+</section>
+
+<section class="slide" data-part="1" data-notes="Text analysis is good at scale, comparison and pattern, and at pointing you to where to read. It cannot tell you why something changed, cannot read irony, tone or context, cannot see what was never written down, kept or digitised, and does not replace close reading. Keep this list in mind for Part 6.">
+  <h2 class="a">What counting can and can’t do</h2>
+  <div class="row" style="gap:48px">
+    <div class="col grow"><p class="eyebrow a" style="--d:1; color:#1a7f5a">Can</p>
+      <div class="chip ghost a" style="--d:2; text-align:left">Count and compare at scale</div>
+      <div class="chip ghost a" style="--d:3; text-align:left">Find patterns and outliers</div>
+      <div class="chip ghost a" style="--d:4; text-align:left">Point you to texts to read</div>
+      <div class="chip ghost a" style="--d:5; text-align:left">Make claims checkable</div></div>
+    <div class="col grow"><p class="eyebrow a" style="--d:1; color:var(--hot)">Can’t</p>
+      <div class="chip ghost a" style="--d:6; text-align:left">Explain why</div>
+      <div class="chip ghost a" style="--d:7; text-align:left">Read irony, tone, context</div>
+      <div class="chip ghost a" style="--d:8; text-align:left">See what was never kept or digitised</div>
+      <div class="chip ghost a" style="--d:9; text-align:left">Replace close reading</div></div>
+  </div>
+</section>
+
+<section class="slide" data-part="1" data-notes="Three explanations for any change in frequency. Only the first two are about the past; the third is about the source. Most of Part 6 is about the third. Ask these three questions of every chart today. Press → to reveal them one by one.">
+  <h2 class="a">Why a word becomes more frequent</h2>
+  <div class="row grow" style="gap:56px; align-items:center">
+    <div class="chart a" data-chart="why" style="width:560px; height:360px; --d:1"></div>
+    <div class="col grow" style="gap:18px">
+      <div class="tile step"><h3>Something happened</h3></div>
+      <div class="tile step"><h3>Its meaning changed</h3></div>
+      <div class="tile step"><h3 style="color:var(--hot)">The corpus changed</h3></div>
+    </div>
+  </div>
+  <p class="point a" style="--d:3">These three explanations apply to every chart in this lecture.</p>
+</section>
+
+<!-- ============ PART 2 ============ -->
+<section class="slide dark divider" data-part="2" data-notes="Before any method: what is in the corpus and how it was made.">
+  <p class="part a">Part 2</p><h2 class="a" style="--d:1">What are we counting?</h2><p class="sub a" style="--d:2">From archive to data, and our three corpora</p>
+  <div class="track f" style="--d:3"></div>
+</section>
+
+<section class="slide" data-part="2" data-notes="Real example from Delpher: the Noordhollandsche courant, 3 May 1780, page 2, appointments and deaths in the VOC's Asian settlements. Top: the scan. Bottom: the OCR text Delpher serves for the same lines; errors light up in red. The long s in 'ontslagen' (dismissed) is read as f, so a search for 'ontslagen' misses this article; italic names suffer most (Gale → Gak, Jaffanapatnam → Jaiknapataaai); e is read as c (October → Octobcr). OCR for print (Delpher), HTR for handwriting (VOC and notarial archives, Amsterdam City Archives): always ask what the machine did to the text before you count it.">
+  <h2 class="a">From scan to text</h2>
+  <img class="fig frame a" style="--d:1; width:100%; height:auto" src="media/delpher-1780.jpg" alt="Scan of the Noordhollandsche courant, 3 May 1780, page 2 (detail)">
+  <p class="ocr a" style="--d:2">Den 5 <span class="err" style="--d:0">Octobcr</span> op <span class="err" style="--d:1">Ceyloa</span> den Koopman Sluyskens, Administrateur te <span class="err" style="--d:2">Jaiknapataaai</span>. Stork, als <span class="err" style="--d:3">dispenfier</span> te Colombo <span class="err" style="--d:4">ontflagen</span>. Den Onder-Koopman van <span class="err" style="--d:5">S.-nden</span>, in zyn plaatst, G.W.Trek, Secretaris van Politie te <span class="err" style="--d:6">Gak</span> <span class="err" style="--d:7">ontflagen</span>. Den Onder-Koopman H. L. <span class="err" style="--d:8">Merthezc</span>, in zyn plaats. Den 7 dito. Anthony Hendrik <span class="err" style="--d:9">Dormcux</span>, oud <span class="err" style="--d:10">vifitatcur</span> Generaal der <span class="err" style="--d:11">Indiefche</span> Negotie-Boeken, overleden.</p>
+  <p class="point a" style="--d:4">OCR errors affect every count made from digitised text.</p>
+  <p class="src">Noordhollandsche courant, 3 May 1780, p. 2. Scan and OCR: Delpher, KB – National Library of the Netherlands.</p>
+</section>
+
+<section class="slide" data-part="2" data-notes="Select a cohesive corpus; describe it with metadata; clean it (OCR correction, spelling standardisation); prepare it (split into words, lemmatise: stole → steal, tag parts of speech). Each step is optional and each is a choice that changes every count that follows.">
+  <h2 class="a">Preparing a corpus</h2>
+  <div class="row" style="gap:10px; align-items:flex-start">
+    <div class="col a grow" style="--d:1"><div class="chip" style="font-size:32px; padding:30px">Select</div><p style="font-size:22px; color:var(--muted); text-align:center">the texts</p></div><span class="arrow a" style="--d:1">→</span>
+    <div class="col a grow" style="--d:2"><div class="chip" style="font-size:32px; padding:30px">Describe</div><p style="font-size:22px; color:var(--muted); text-align:center">with metadata</p></div><span class="arrow a" style="--d:2">→</span>
+    <div class="col a grow" style="--d:3"><div class="chip" style="font-size:32px; padding:30px">Clean</div><p style="font-size:22px; color:var(--muted); text-align:center">OCR, spelling</p></div><span class="arrow a" style="--d:3">→</span>
+    <div class="col a grow" style="--d:4"><div class="chip" style="font-size:32px; padding:30px">Prepare</div><p style="font-size:22px; color:var(--muted); text-align:center">split, lemmatise</p></div>
+  </div>
+  <p class="point a" style="--d:6">Each step involves choices that affect the counts.</p>
+</section>
+
+<section class="slide" data-part="2" data-notes="Printed accounts of trials at London's central criminal court, 1674–1913, digitised and marked up by Old Bailey Online (Hitchcock, Shoemaker, Emsley, Howard, McLaughlin et al.). Every trial is tagged by hand with offence, verdict, punishment and defendant's gender. In the lab we use a random sample of 12,482 trials (up to 500 per decade); the word embeddings are trained on the full text. Data via Hugging Face biglam/old_bailey_proceedings, CC BY-NC 4.0.">
+  <p class="eyebrow a">Corpus 1</p>
+  <h2 class="a" style="--d:1">The Old Bailey Proceedings</h2>
+  <div class="row" style="gap:48px; margin-top:20px">
+    <div class="a grow" style="--d:2"><div class="big">197,750</div><p class="big-l">trials</p></div>
+    <div class="a grow" style="--d:3"><div class="big">123m</div><p class="big-l">words</p></div>
+    <div class="a grow" style="--d:4"><div class="big">1674–1913</div><p class="big-l">240 years</p></div>
+  </div>
+  <p class="point a" style="--d:6">Printed accounts of trials at London’s central criminal court, each tagged with offence, verdict and punishment.</p>
+  <p class="src">Old Bailey Online, via Hugging Face biglam/old_bailey_proceedings, CC BY-NC 4.0.</p>
+</section>
+
+<section class="slide" data-part="2" data-notes="The Royal Society Corpus, built at Saarland University from the Philosophical Transactions and Proceedings of the Royal Society of London. Open version 6.0.4: 17,520 texts, 1665–1920: letters, papers, abstracts, with author, journal, year and topic. The corpus of the second lab notebook. A source with a history: the Transactions began as Henry Oldenburg's newsletter of letters and reports and became a professional scientific journal.">
+  <p class="eyebrow a">Corpus 2</p>
+  <h2 class="a" style="--d:1">The Royal Society’s journals</h2>
+  <div class="row" style="gap:48px; margin-top:20px">
+    <div class="a grow" style="--d:2"><div class="big">17,520</div><p class="big-l">texts</p></div>
+    <div class="a grow" style="--d:3"><div class="big">64m</div><p class="big-l">words</p></div>
+    <div class="a grow" style="--d:4"><div class="big">1665–1920</div><p class="big-l">250 years</p></div>
+  </div>
+  <p class="point a" style="--d:6">Letters, papers and abstracts published by the Royal Society, 1665–1920.</p>
+  <p class="src">Royal Society Corpus 6.0.4 Open (Fischer, Knappen, Menzel, Teich et al.), CC BY-NC-SA 4.0.</p>
+</section>
+
+<section class="slide" data-part="2" data-notes="The proceedings of both chambers of the Dutch parliament (Tweede Kamer and Eerste Kamer), 1814–2012, from the PoliticalMashup project (Maarten Marx and others), published through DANS under CC0. About 51,000 sittings. Each speech has a date, chamber, speaker, role (member, minister, chair) and, for about two thirds of speeches, a party. The lab uses a sample of 10,648 speeches and two word2vec models, for 1814–1917 and 1918–2012, each trained on about 27 million words. Like the other two corpora it is a source with a history: spelling reforms (zoo → zo, mensch → mens), OCR errors in older volumes, and early members who sometimes spoke French.">
+  <p class="eyebrow a">Corpus 3</p>
+  <h2 class="a" style="--d:1">The Dutch parliament</h2>
+  <div class="row" style="gap:48px; margin-top:20px">
+    <div class="a grow" style="--d:2"><div class="big">51,000</div><p class="big-l">sittings</p></div>
+    <div class="a grow" style="--d:3"><div class="big">2</div><p class="big-l">chambers</p></div>
+    <div class="a grow" style="--d:4"><div class="big">1814–2012</div><p class="big-l">200 years</p></div>
+  </div>
+  <p class="point a" style="--d:6">Speeches in the Tweede and Eerste Kamer, with speaker, role and party. Used in the third lab notebook.</p>
+  <p class="src">PoliticalMashup, Dutch Parliamentary Proceedings 1814–2012, DANS doi:10.17026/dans-xk5-dw3s, CC0.</p>
+</section>
+
+
+
+<section class="slide" data-part="2" data-notes="Tokenisation: the exact rule used in the lab: lower-case everything and keep runs of letters a–z. Lost: numbers (40), punctuation, the apostrophe in Prosecutor's (the red tokens). Kept apart: murder and murther, shilling and shilings. Students edit this sentence in the lab and watch the tokens change.">
+  <h2 class="a">What counts as a word?</h2>
+  <p class="quote a" style="--d:1; font-size:38px">“The Prisoner stole a silver Watch, value 40s. from the Prosecutor's pocket.”</p>
+  <p class="arrow a" style="--d:2; align-self:flex-start; font-size:40px">↓</p>
+  <div class="tok">
+    <span class="a" style="--d:3">the</span><span class="a" style="--d:4">prisoner</span><span class="a" style="--d:5">stole</span><span class="a" style="--d:6">a</span><span class="a" style="--d:7">silver</span><span class="a" style="--d:8">watch</span><span class="a" style="--d:9">value</span><span class="x a" style="--d:10">s</span><span class="a" style="--d:11">from</span><span class="a" style="--d:12">the</span><span class="a" style="--d:13">prosecutor</span><span class="x a" style="--d:14">s</span><span class="a" style="--d:15">pocket</span>
+  </div>
+  <p class="point a" style="--d:16">The rule for splitting text into words affects what is counted.</p>
+</section>
+
+<!-- ============ PART 3 ============ -->
+<section class="slide dark divider" data-part="3" data-notes="Method 1: term frequency.">
+  <p class="part a">Part 3 · Method 1</p><h2 class="a" style="--d:1">How often? Frequency</h2><p class="sub a" style="--d:2">Counting words and phrases over time</p>
+  <div class="track f" style="--d:3"></div>
+</section>
+
+<section class="slide" data-part="3" data-notes="The method card: the same four questions for each method. Frequency counts words or phrases and divides by the size of the corpus (per 10,000 or per million words), so that periods or groups of different size can be compared. Good for trends, events, the rise and fall of terms and concepts. Watch out: the corpus changes over time; spelling and OCR; words with several meanings.">
+  <p class="eyebrow a">Method card</p>
+  <h2 class="a" style="--d:1">Method 1: frequency</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:2"><h3>The question</h3><p>How often, and when?</p></div>
+    <div class="tile a" style="--d:3"><h3>How it works</h3><p>Count words or phrases; divide by corpus size</p></div>
+    <div class="tile a" style="--d:4"><h3 style="color:#1a7f5a">Good for</h3><p>Trends, events, rise and fall of terms</p></div>
+    <div class="tile a" style="--d:5"><h3 style="color:var(--hot)">Watch out</h3><p>Corpus changes, OCR, words with many meanings</p></div>
+  </div>
+  <p class="a" style="--d:6; font-size:24px; color:var(--muted)">Today: Delpher · electric fire → current · Chagall</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="Same Delpher search for 'liberaal', two views. The raw count partly measures how much was printed and digitised: more newspapers later, so raw counts rise anyway. The relative frequency asks: of everything printed that year, how much mentions the word?">
+  <h2 class="a">Raw and normalised counts</h2>
+  <div class="row grow" style="gap:40px">
+    <div class="col grow a" style="--d:1"><img class="fig frame" src="media/image-18-1.png" alt="Delpher: raw number of articles mentioning liberaal" style="height:430px; margin:auto"><p class="eyebrow" style="text-align:center">Raw count</p></div>
+    <div class="col grow a" style="--d:3"><img class="fig frame" src="media/image-18-2.png" alt="Delpher: share of articles mentioning liberaal" style="height:430px; margin:auto"><p class="eyebrow" style="text-align:center">Share of all articles</p></div>
+  </div>
+  <p class="point a" style="--d:5">Counts need to be divided by the total amount of text in each period.</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="Counts from the Old Bailey lab sample (6.8 million words). Stopwords: very common words (the, and, of), often removed. 'prisoner' and 'mr' tell us about the genre; 'q' (Question in the transcripts) and 'th' (what is left of '29th') about how it was printed. Stopword lists are choices too: removing 'she' or 'her' would hide gender.">
+  <h2 class="a">The most frequent words</h2>
+  <div class="row" style="gap:80px; justify-content:center">
+    <table class="plain a" style="--d:1; width:420px"><tr><th>All words</th><th style="text-align:right">count</th></tr>
+      <tr><td>the</td><td class="n">422,467</td></tr><tr><td>i</td><td class="n">288,268</td></tr><tr><td>and</td><td class="n">211,011</td></tr><tr><td>to</td><td class="n">167,188</td></tr><tr><td>of</td><td class="n">165,138</td></tr><tr><td>a</td><td class="n">154,235</td></tr></table>
+    <table class="plain a" style="--d:3; width:420px"><tr><th>Without stopwords</th><th style="text-align:right">count</th></tr>
+      <tr><td><b>prisoner</b></td><td class="n">49,762</td></tr><tr><td>mr</td><td class="n">36,415</td></tr><tr><td>went</td><td class="n">29,152</td></tr><tr><td><b style="color:var(--hot)">q</b></td><td class="n">26,042</td></tr><tr><td>house</td><td class="n">24,685</td></tr><tr><td><b style="color:var(--hot)">th</b></td><td class="n">21,654</td></tr></table>
+  </div>
+  <p class="point a" style="--d:5">The most frequent words mostly reflect the genre of the source.</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="A window slides along the text: every pair of neighbours is a bigram (2-gram), every three a trigram. N-grams separate meanings: 'watch' the timepiece versus 'the watch' and 'watch house', the night watch. Bigram counts from 1,000 trials containing 'watch' in the Old Bailey sample. Next slide: an n-gram that tells a history.">
+  <h2 class="a">N-grams: words in sequence</h2>
+  <div class="row grow" style="gap:56px">
+    <div class="col" style="width:600px; gap:14px">
+      <div class="tok a" style="--d:1"><span>stole</span><span>a</span><span>silver</span><span>watch</span><span>value</span></div>
+      <div class="tok" style="flex-direction:column; gap:10px">
+        <span class="a" style="--d:2; background:var(--paper-2); color:var(--ink); margin-left:0">stole a</span>
+        <span class="a" style="--d:3; background:var(--paper-2); color:var(--ink); margin-left:70px">a silver</span>
+        <span class="a" style="--d:4; background:var(--paper-2); color:var(--ink); margin-left:120px">silver watch</span>
+        <span class="a" style="--d:5; background:var(--paper-2); color:var(--ink); margin-left:220px">watch value</span>
+      </div>
+    </div>
+    <div class="chart grow a" style="--d:2" data-chart="watch"></div>
+  </div>
+  <p class="point a" style="--d:6">‘The watch’ usually refers to the night watch; ‘a silver watch’ usually to stolen property.</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="Every 'electric' or 'electrical' in the Royal Society's journals, and the noun that follows (a bigram), per million words in each 25-year period. The table fills in period by period. 1725–49: a 'virtue' or 'effluvia' given off by rubbed glass (Stephen Gray, Desaguliers). 1750–99: a 'fluid' or 'fire' (Franklin, Cavendish), increasingly a 'spark' and a 'shock' (the Leyden jar). The 'electric organ' of the torpedo fish appears in 1773 (Walsh, Hunter). After Volta's pile (1800) and electromagnetism (Ørsted 1820, Faraday) the 'electric current' dominates. Late in the century 'resistance' (measurement), 'light' (electric lighting), and finally 'field' and 'waves' (Maxwell, Hertz, wireless). Of the three questions, this one is mostly 'its meaning changed'.">
+  <h2 class="a">The noun after ‘electric’, 1725–1924</h2>
+  <div id="heat" class="a" style="--d:1"></div>
+  <p class="point a" style="--d:2">The noun after ‘electric’ changes from virtue and fluid to current, and later to field and waves.</p>
+  <p class="src">‘electric’ or ‘electrical’ + noun, per million words. Royal Society Corpus 6.0.4 Open.</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="A concordance (keyword in context, KWIC) is the oldest digital humanities tool: Busa's Index Thomisticus was a concordance. One line for each stage. Franklin 1752: fire drawn from clouds. Cavendish 1771: an elastic fluid. Hunter 1773: the electric organ of the torpedo, an anatomical object. Faraday 1832: a current you can reverse. Fleming 1902: electric waves and Marconi's 'space telegraphy'. Other stages: Desaguliers' 'electrical Virtue' (1739), Ellicott's 'electric Effluvia' (1748), Siemens' 'electric light' (1879).">
+  <h2 class="a">Keyword in context</h2>
+  <div class="kwic">
+    <div class="y a" style="--d:1">1752</div><div class="l a" style="--d:1"><bdi>…the pointed wire will draw the</bdi></div><div class="k a" style="--d:1">electric fire</div><div class="r a" style="--d:1">from them…</div>
+    <div class="y a" style="--d:2">1771</div><div class="l a" style="--d:2"><bdi>…it is likely that the</bdi></div><div class="k a" style="--d:2">electric fluid</div><div class="r a" style="--d:2">is endued with this property…</div>
+    <div class="y a" style="--d:3">1773</div><div class="l a" style="--d:3"><bdi>…the columns which compose the</bdi></div><div class="k a" style="--d:3">electric organ</div><div class="r a" style="--d:3">[of the torpedo]…</div>
+    <div class="y a" style="--d:4">1832</div><div class="l a" style="--d:4"><bdi>…on reversing the order of rotation, the</bdi></div><div class="k a" style="--d:4">electrical current</div><div class="r a" style="--d:4">was reversed…</div>
+    <div class="y a" style="--d:5">1902</div><div class="l a" style="--d:5"><bdi>…a Magnetic Detector for</bdi></div><div class="k a" style="--d:5">Electric Waves</div><div class="r a" style="--d:5">… a Receiver for Space Telegraphy</div>
+  </div>
+  <p class="point a" style="--d:7">Reading the lines shows what each phrase referred to.</p>
+  <p class="src">Franklin 1752 · Cavendish 1771 · Hunter 1773 · Faraday 1832 · Fleming 1902. Royal Society Corpus.</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="Michel et al., 'Quantitative analysis of culture using millions of digitized books', Science 331 (2011), the paper behind the Google Books Ngram Viewer. The Jewish painter Marc Chagall, labelled 'degenerate' by the Nazi regime: in German-language books his name falls through the 1930s to almost nothing in 1940–42 and recovers after 1945; in English-language books it keeps rising. The English line serves as a comparison. Note the German fall starts in the late 1920s; and 'books' means books Google scanned from a handful of libraries. Data re-downloaded from the Ngram Viewer (2019 corpora, 1-year smoothing).">
+  <h2 class="a">Frequency in practice: Chagall in German and English books</h2>
+  <div class="chart grow a" style="--d:1" data-chart="chagall"></div>
+  <p class="point a" style="--d:3">Mentions of Chagall in German books fell almost to zero in 1933–45; mentions in English books continued.</p>
+  <p class="src">‘Marc Chagall’ per billion words. Michel et al., Science 331 (2011). Data: Google Books Ngram Viewer.</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="https://www.delpher.nl/nl/kranten. About 10 minutes. Search for a word or n-gram, look for trends over time, find articles that exemplify them, compare raw counts with proportions, add your term to Wooclap.">
+  <p class="eyebrow a">Exercise 1 · 10 minutes</p>
+  <h2 class="a" style="--d:1">Search Delpher</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:2"><span class="num">1</span><p style="color:var(--ink)">Search a word or n-gram</p></div>
+    <div class="tile a" style="--d:3"><span class="num">2</span><p style="color:var(--ink)">Find a trend over time</p></div>
+    <div class="tile a" style="--d:4"><span class="num">3</span><p style="color:var(--ink)">Read the articles behind it</p></div>
+    <div class="tile a" style="--d:5"><span class="num">4</span><p style="color:var(--ink)">Compare raw counts with proportions</p></div>
+  </div>
+  <p class="point a mono" style="--d:6; font-size:28px">delpher.nl/nl/kranten · then add your term to Wooclap</p>
+</section>
+
+<section class="slide" data-part="3" data-notes="Summary of Part 3 before moving on.">
+  <p class="eyebrow a">Summary</p>
+  <h2 class="a" style="--d:1">Frequency</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:2"><h3>What it measures</h3><p style="color:var(--ink)">How often a word or phrase occurs, divided by the amount of text.</p></div>
+    <div class="tile a" style="--d:3"><h3>What we saw</h3><p style="color:var(--ink)">‘Electric fire’ gives way to ‘electric current’; Chagall almost disappears from German books in 1933–45.</p></div>
+    <div class="tile a" style="--d:4"><h3 style="color:var(--hot)">Watch out for</h3><p style="color:var(--ink)">Changes in the corpus, OCR errors, and words with several meanings.</p></div>
+    <div class="tile a" style="--d:5"><h3>In the lab</h3><p style="color:var(--ink)">Chart any word or phrase by decade in all three corpora, and read examples in context.</p></div>
+  </div>
+</section>
+
+<!-- ============ PART 4 ============ -->
+<section class="slide dark divider" data-part="4" data-notes="Method 2: association.">
+  <p class="part a">Part 4 · Method 2</p><h2 class="a" style="--d:1">In what company? Association</h2><p class="sub a" style="--d:2">Collocation and distinctive words</p>
+  <div class="track f" style="--d:3"></div>
+</section>
+
+<section class="slide" data-part="4" data-notes="Association looks at the words around a word (collocation) or compares one set of texts with another (keyness, distinctive words, TF-IDF). Good for how a concept is framed, and what distinguishes groups, periods or authors. Watch out: scores like MI favour rare words; the result depends on what you compare with; being near a word is not the same as meaning it.">
+  <p class="eyebrow a">Method card</p>
+  <h2 class="a" style="--d:1">Method 2: association</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:2"><h3>The question</h3><p>In what company? What is typical?</p></div>
+    <div class="tile a" style="--d:3"><h3>How it works</h3><p>Count words near a word; compare one set of texts with another</p></div>
+    <div class="tile a" style="--d:4"><h3 style="color:#1a7f5a">Good for</h3><p>How a concept is framed; what distinguishes groups</p></div>
+    <div class="tile a" style="--d:5"><h3 style="color:var(--hot)">Watch out</h3><p>Rare-word bias; the choice of comparison</p></div>
+  </div>
+  <p class="a" style="--d:6; font-size:24px; color:var(--muted)">Today: gin · electricity’s company · liberty from / to · violence</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="How often does word X occur near word Y? Count every word inside a window (here up to 5 words either side of 'gin'), across the whole corpus; then ask which turn up far more often than chance (next slide). Example sentence from an Old Bailey trial of 1776 (t17760911-88). The strongest collocates of gin in the sample: quartern (a quarter pint), glass, drank, pint, beer.">
+  <h2 class="a">Collocation</h2>
+  <div class="tok">
+    <span class="a" style="--d:1; background:var(--paper-2); color:var(--muted)">i</span><span class="a" style="--d:1; background:var(--paper-2); color:var(--muted)">gave</span><span class="a" style="--d:1; background:var(--paper-2); color:var(--muted)">clarke</span><span class="a" style="--d:1; background:var(--paper-2); color:var(--muted)">sixpence</span>
+    <span class="a" style="--d:3">to</span><span class="a" style="--d:3">fetch</span><span class="a" style="--d:3">a</span><span class="a" style="--d:3">quartern</span><span class="a" style="--d:3">of</span><span class="x a" style="--d:2">gin</span>
+  </div>
+  <p class="a" style="--d:4; font-size:22px; color:var(--accent); font-family:var(--mono)">window: 5 words either side</p>
+  <div class="row" style="gap:56px; align-items:center">
+    <p class="lead a" style="--d:5; width:640px">The words most often near ‘gin’ relate to measures and drinking.</p>
+    <table class="plain a" style="--d:6; width:380px"><tr><th>near gin</th><th style="text-align:right">times</th></tr>
+      <tr><td>glass</td><td class="n">70</td></tr><tr><td>quartern</td><td class="n">57</td></tr><tr><td>water</td><td class="n">24</td></tr><tr><td>drank</td><td class="n">21</td></tr><tr><td>pint</td><td class="n">21</td></tr></table>
+  </div>
+</section>
+
+<section class="slide" data-part="4" data-notes="Mutual information: log2 of observed over expected, where expected is how often the two words would meet by chance given how common each is. 1 means twice as often as chance, 3 eight times. MI rewards rare words, so set a minimum number of meetings.">
+  <h2 class="a">Observed vs expected: the MI score</h2>
+  <p class="quote a" style="--d:1; font-style:normal; font-family:var(--display); font-size:52px">MI = log₂ ( observed ÷ expected )</p>
+  <div style="display:grid; grid-template-columns:240px 200px 240px 1fr; gap:22px 20px; align-items:baseline; font-size:30px">
+    <span class="a" style="--d:2; font-family:var(--serif); color:var(--accent); font-size:38px">quartern</span><span class="a mono" style="--d:2">57 seen</span><span class="a mono" style="--d:2; color:var(--muted)">0.1 expected</span><span class="a mono" style="--d:3; color:var(--hot); font-weight:500">MI 9.3</span>
+    <span class="a" style="--d:4; font-family:var(--serif); color:var(--accent); font-size:38px">glass</span><span class="a mono" style="--d:4">70 seen</span><span class="a mono" style="--d:4; color:var(--muted)">1 expected</span><span class="a mono" style="--d:5; color:var(--hot); font-weight:500">MI 6.1</span>
+    <span class="a" style="--d:6; font-family:var(--serif); color:var(--accent); font-size:38px">beer</span><span class="a mono" style="--d:6">27 seen</span><span class="a mono" style="--d:6; color:var(--muted)">0.9 expected</span><span class="a mono" style="--d:7; color:var(--hot); font-weight:500">MI 5.0</span>
+  </div>
+  <p class="point a" style="--d:9">‘Quartern’ appears near ‘gin’ about 600 times more often than expected by chance.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="Collocation over time: every word within 5 words of 'electric', 'electrical' or 'electricity', sorted into hand-made groups, as a share of all occurrences in each 25-year period. Rubbing & attraction: rubbed, friction, attract, repel, effluvia, virtue, amber, wax. Fluid & fire: fluid, fire, aether. Living bodies: animal, torpedo, gymnotus, eel, fish, nerve, muscle, frog, patient, paralytic, cure, disease, shock. Machines & technology: machine, battery, dynamo, telegraph, lamp, lighting, cable, engine, motor, tramways. Current & measurement: current, resistance, conductivity, volt, ohm, potential, units. Living bodies are a real strand (medical cures by electricity in the 1750s–70s; the torpedo and the electric eel in the 1770s; Galvani's frogs in the 1790s), at most 8 in 100, fading after 1900. Machines stay below 7 in 100 in these journals. Measurement words rise to about 20 in 100 from the 1820s. The groups are my choice: a different list would give a different picture. Discuss.">
+  <h2 class="a">Words near ‘electricity’, 1725–1924</h2>
+  <div class="chart grow a" style="--d:1" data-chart="groups"></div>
+  <p class="point a" style="--d:3">After 1825, words about measurement are the largest group; words about bodies and machines stay below 10 per 100.</p>
+  <p class="src">Words within 5 of electric / electrical / electricity, grouped by hand, per 100 uses. Royal Society Corpus 6.0.4 Open.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="Isaiah Berlin, 'Two Concepts of Liberty' (1958): negative liberty is freedom from interference; positive liberty is freedom to act, to govern oneself. Which did early modern writers mean? John Regan turns this into a collocation question: which preposition follows the word? Counts from Regan, Semantic Change and Collective Knowledge in 18th-Century Britain (Bloomsbury 2023), built on ECCO (the earliest periods presumably EEBO; check). Raw counts: liberty from 234 / 1,272 / 2,791 / 5,934; liberty to 3,143 / 19,913 / 68,788 / 154,122; freedom from 1,285 / 431 / 5,890 / 15,667; freedom to 511 / 189 / 5,639 / 12,597. The chart shows 'from' as a share of from + to. The two words are used differently: 'freedom' is more often followed by 'from', 'liberty' by 'to'. Part 6 returns to this example: in practice 'liberty to' often means permission.">
+  <h2 class="a">Association in practice: ‘liberty from’ and ‘liberty to’</h2>
+  <div class="row grow" style="gap:48px">
+    <div class="col" style="width:420px; gap:16px">
+      <div class="chip a" style="--d:1; text-align:left">Negative · freedom <i>from</i></div>
+      <div class="chip hot a" style="--d:2; text-align:left">Positive · freedom <i>to</i></div>
+      <p class="a" style="--d:3; font-size:22px; color:var(--muted); font-style:italic">Isaiah Berlin, ‘Two Concepts of Liberty’, 1958</p>
+    </div>
+    <div class="chart grow a" style="--d:2" data-chart="liberty"></div>
+  </div>
+  <p class="point a" style="--d:4">‘Freedom’ is more often followed by ‘from’; ‘liberty’ more often by ‘to’.</p>
+  <p class="src">Phrase counts: John Regan, Semantic Change and Collective Knowledge in 18th-Century Britain (2023), ECCO.</p>
+</section>
+
+
+
+<section class="slide" data-part="4" data-notes="Term frequency times inverse document frequency. tf: how often the word occurs in this document, here per 1,000 words. N: the number of documents. df: the number of documents that contain the word. idf = log(N / df) is zero for a word that occurs in every document, and larger the fewer documents contain it. The product is high for words that are frequent in this document and found in few others. We use the natural logarithm; the base only changes the scale.">
+  <h2 class="a">TF-IDF</h2>
+  <p class="quote a" style="--d:1; font-style:normal; font-family:var(--display); font-size:64px; text-align:center; background:var(--paper-2); border-radius:14px; padding:26px">tf-idf = tf × log ( N ÷ df )</p>
+  <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px">
+    <div class="tile a" style="--d:2"><h3 class="mono">tf</h3><p>how often the word occurs in this document</p></div>
+    <div class="tile a" style="--d:3"><h3 class="mono">N</h3><p>the number of documents</p></div>
+    <div class="tile a" style="--d:4"><h3 class="mono">df</h3><p>the number of documents that contain the word</p></div>
+  </div>
+  <p class="point a" style="--d:6">A word that occurs in every document gets a score of zero.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="Documents: the nine Old Bailey offence categories in the lab sample (killing, theft, deception, coining and so on). Left: the ten most frequent words in all killing trials together. They are the same function words as in every other category, so they say nothing about killing. Right: the ten words with the highest TF-IDF score in the killing trials. These describe homicide trials: the deceased, the coroner's inquest (an inquisition), manslaughter, a mortal wound. Some are surnames (sellers, yates, serne) from a few long trials: TF-IDF also picks out words that are frequent in one document only because one long text in it uses them a lot. 'deceas' is a tokenising or OCR fragment of 'deceased'.">
+  <h2 class="a">TF-IDF: killing trials</h2>
+  <div class="row" style="gap:64px">
+    <div class="col grow"><p class="eyebrow a" style="--d:1; color:var(--muted)">Most frequent words</p>
+      <div class="mono" style="display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; font-size:30px"><span class="a" style="--d:2; color:var(--muted)">the</span><span class="a" style="--d:2; color:var(--muted)">i</span><span class="a" style="--d:3; color:var(--muted)">and</span><span class="a" style="--d:3; color:var(--muted)">was</span><span class="a" style="--d:4; color:var(--muted)">to</span><span class="a" style="--d:4; color:var(--muted)">of</span><span class="a" style="--d:5; color:var(--muted)">a</span><span class="a" style="--d:5; color:var(--muted)">he</span><span class="a" style="--d:6; color:var(--muted)">in</span><span class="a" style="--d:6; color:var(--muted)">that</span></div></div>
+    <div class="col grow"><p class="eyebrow a" style="--d:3">Highest TF-IDF</p>
+      <div class="mono" style="display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; font-size:30px"><span class="a" style="--d:4; color:var(--ink); font-weight:500">deceased <small style="color:var(--muted)">2.32</small></span><span class="a" style="--d:4; color:var(--ink); font-weight:500">manslaughter <small style="color:var(--muted)">0.84</small></span><span class="a" style="--d:5; color:var(--ink); font-weight:500">coroner <small style="color:var(--muted)">0.68</small></span><span class="a" style="--d:5; color:var(--ink); font-weight:500">mortal <small style="color:var(--muted)">0.56</small></span><span class="a" style="--d:6; color:var(--muted)">sellers <small style="color:var(--muted)">0.53</small></span><span class="a" style="--d:6; color:var(--ink); font-weight:500">inquisition <small style="color:var(--muted)">0.48</small></span><span class="a" style="--d:7; color:var(--muted)">deceas <small style="color:var(--muted)">0.47</small></span><span class="a" style="--d:7; color:var(--muted)">yates <small style="color:var(--muted)">0.46</small></span><span class="a" style="--d:8; color:var(--ink); font-weight:500">inquest <small style="color:var(--muted)">0.40</small></span><span class="a" style="--d:8; color:var(--muted)">serne <small style="color:var(--muted)">0.37</small></span></div>
+      <p class="a" style="--d:9; font-size:20px; color:var(--muted); font-style:italic">Grey: surnames and a fragment, from a few long trials.</p></div>
+  </div>
+  <p class="point a" style="--d:10">Raw counts give the same function words for every category; TF-IDF gives the vocabulary of homicide trials.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="TF-IDF compares documents, and the researcher decides what a document is. It can be a single trial, all the trials for one offence, all the trials of women and all the trials of men, all the trials in one decade, or in the Royal Society Corpus all the papers by one author or in one journal. The choice of document decides which comparison TF-IDF makes, and so which question it answers.">
+  <h2 class="a">What counts as a document?</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px">
+    <div class="tile a" style="--d:1"><h3>One trial</h3><p>what is particular to this case?</p></div>
+    <div class="tile a" style="--d:2"><h3>One offence category</h3><p>what is typical of deception, killing, coining?</p></div>
+    <div class="tile a" style="--d:3"><h3>Trials of women / of men</h3><p>what distinguishes the two groups?</p></div>
+    <div class="tile a" style="--d:4"><h3>One decade</h3><p>what is new in the 1830s?</p></div>
+    <div class="tile a" style="--d:5"><h3>One author</h3><p>what distinguishes Faraday from Davy?</p></div>
+    <div class="tile a" style="--d:6"><h3>One journal</h3><p>Transactions or Proceedings?</p></div>
+  </div>
+  <p class="point a" style="--d:8">The choice of document decides which comparison TF-IDF makes.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="Each Old Bailey offence category treated as one document; three of the words with the highest TF-IDF scores in each (surnames left out). 'Royal offences' in the Old Bailey are mostly coining.">
+  <h2 class="a">TF-IDF by offence category</h2>
+  <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:18px">
+    <div class="tile a" style="--d:1"><h3>Killing</h3><p>deceased, manslaughter, coroner</p></div>
+    <div class="tile a" style="--d:2"><h3>Deception</h3><p>defraud, cheques, bonds</p></div>
+    <div class="tile a" style="--d:3"><h3>Coining</h3><p>coin, counterfeit, florin</p></div>
+    <div class="tile a" style="--d:4"><h3>Theft</h3><p>value, silk, stealing</p></div>
+  </div>
+  <p class="point a" style="--d:6">The highest-scoring words show what each kind of trial is about.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="Defendant's gender as tagged by Old Bailey Online: 3,006 trials of women, 8,919 of men. log2 ratio of the share of trials mentioning each word. Women: clothing (stays, petticoats, quilted), 'spinster' as a legal description, pregnancy and the midwife (infanticide trials). Men: driving, horses, fraud, 'carnally' from rape trials. 'More common in trials of women' does not mean 'women said this'. Content note: real trials, including sexual violence and infanticide.">
+  <h2 class="a">Distinctive words: trials of women and of men</h2>
+  <div class="chart grow a" style="--d:1" data-chart="gender"></div>
+  <p class="point a" style="--d:3">These words come from the whole trial record, including witnesses’ testimony and clerks’ descriptions.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="Klingenstein, Hitchcock and DeDeo, 'The civilizing process in London's Old Bailey', PNAS 111 (2014): 9419–24. Same corpus as ours. They measure, year by year, how different the vocabulary of trials for violent offences is from that of non-violent ones (Jensen-Shannon divergence: a distinctiveness score for two whole vocabularies). Blue: violent vs non-violent. Red: arbitrary groupings of offences (the baseline). Around 1780 the two kinds of trial sound alike; by 1900 they are sharply distinct. The authors read this as a slow change in attitudes to violence (Norbert Elias's 'civilizing process'), which they find in the language of the trials. Discussion question: does this reflect a change in violence or in the court's record-keeping?">
+  <h2 class="a">Distinctiveness in practice: violence in the Old Bailey</h2>
+  <div class="row grow" style="gap:48px; align-items:center">
+    <img class="fig frame a" style="--d:1; height:520px" src="media/klingenstein-2014.jpg" alt="Jensen-Shannon divergence between violent and non-violent trials, 1760–1913 (Klingenstein et al. 2014, Fig. 1)">
+    <div class="col grow" style="gap:20px">
+      <div class="tile a" style="--d:3"><h3 style="color:var(--muted)">1780</h3><p>violent and non-violent trials use similar vocabulary</p></div>
+      <div class="tile a" style="--d:5"><h3>1900</h3><p>the vocabularies are clearly different</p></div>
+    </div>
+  </div>
+  <p class="src">Klingenstein, Hitchcock and DeDeo, ‘The civilizing process in London’s Old Bailey’, PNAS 111 (2014), Fig. 1.</p>
+</section>
+
+<section class="slide" data-part="4" data-notes="Summary of Part 4 before moving on.">
+  <p class="eyebrow a">Summary</p>
+  <h2 class="a" style="--d:1">Association</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:2"><h3>What it measures</h3><p style="color:var(--ink)">Which words occur near a word, and which words distinguish one set of texts from another.</p></div>
+    <div class="tile a" style="--d:3"><h3>What we saw</h3><p style="color:var(--ink)">‘Gin’ with ‘quartern’ and ‘glass’; ‘freedom from’ is more common than ‘liberty from’; violent trials develop a distinct vocabulary.</p></div>
+    <div class="tile a" style="--d:4"><h3 style="color:var(--hot)">Watch out for</h3><p style="color:var(--ink)">MI scores favour rare words; results depend on what is compared with what.</p></div>
+    <div class="tile a" style="--d:5"><h3>In the lab</h3><p style="color:var(--ink)">Collocations with MI scores, distinctive words by gender, offence or verdict, and TF-IDF.</p></div>
+  </div>
+</section>
+
+<!-- ============ PART 5 ============ -->
+<section class="slide dark divider" data-part="5" data-notes="Method 3: semantics. One running example for most of this section: gin, beer, pot, watch, handkerchief. Every number comes from the Old Bailey sample or the lab's models.">
+  <p class="part a">Part 5 · Method 3</p><h2 class="a" style="--d:1">What does it mean? Embeddings</h2><p class="sub a" style="--d:2">From counting neighbours to word vectors</p>
+  <div class="track f" style="--d:3"></div>
+</section>
+
+<section class="slide" data-part="5" data-notes="Embeddings turn each word into a list of numbers learned from the contexts it appears in, so that words used in similar contexts get similar numbers. Good for finding similar words, exploring a vocabulary, and tracing how meaning shifts between periods. Watch out: needs a lot of text; learns the quirks of the corpus (names, spellings, OCR); unstable for rare words.">
+  <p class="eyebrow a">Method card</p>
+  <h2 class="a" style="--d:1">Method 3: word embeddings</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:2"><h3>The question</h3><p>What does it mean? How did it change?</p></div>
+    <div class="tile a" style="--d:3"><h3>How it works</h3><p>Turn each word into numbers learned from its contexts</p></div>
+    <div class="tile a" style="--d:4"><h3 style="color:#1a7f5a">Good for</h3><p>Similar words; how meaning shifts</p></div>
+    <div class="tile a" style="--d:5"><h3 style="color:var(--hot)">Watch out</h3><p>Needs lots of text; learns the corpus’s quirks</p></div>
+  </div>
+  <p class="a" style="--d:6; font-size:24px; color:var(--muted)">Today: gin, beer, pot · electricity · burgers · constable and police</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="J. R. Firth, 1957. Use reflects meaning: words that appear in the same contexts tend to have similar meanings (Wittgenstein: the meaning of a word is its use). Gin and beer are fetched, stood and drunk by the glass, the drop, the pot and the pint. The computer is not told that they are drinks; it groups them because they appear in similar contexts.">
+  <p class="quote a" style="font-size:58px; font-family:var(--display); font-style:normal; line-height:1.15">“You shall know a word by the company it keeps.”</p>
+  <p class="a" style="--d:1; font-size:24px; color:var(--muted); font-family:var(--mono)">J. R. Firth, 1957</p>
+  <div class="kwic" style="grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto; column-gap:14px">
+    <div class="l a" style="--d:2"><bdi>…sixpence to fetch a quartern of</bdi></div><div class="k a" style="--d:2">gin</div><div class="l a" style="--d:3"><bdi>…a sovereign to fetch a pot of</bdi></div><div class="k a" style="--d:3">beer</div>
+    <div class="l a" style="--d:4"><bdi>…me to give her a glass of</bdi></div><div class="k a" style="--d:4">gin</div><div class="l a" style="--d:5"><bdi>…in and called for a pint of</bdi></div><div class="k a" style="--d:5">beer</div>
+    <div class="l a" style="--d:6"><bdi>…asked me to stand a drop of</bdi></div><div class="k a" style="--d:6">gin</div><div class="l a" style="--d:7"><bdi>…quiet I would get a drop of</bdi></div><div class="k a" style="--d:7">beer</div>
+  </div>
+  <p class="point a" style="--d:9">Gin and beer appear in similar contexts, so a model can group them without being told they are drinks.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="An n-gram language model: count every trigram, then predict the next word from the two before it. 'A quartern of' (a spirits measure) is followed by gin 44% of the time, then brandy and rum; 'a pint of' by beer, ale, porter, wine and purl. Two points. Words that follow the same phrase tend to be similar: the counts separate spirits from beers (Firth's idea, applied by counting). Predicting the next word is also the task that large language models such as ChatGPT are trained on, using a neural network and much longer contexts. Word2vec, coming up, is also trained by prediction. Old Bailey sample: 111 and 583 occurrences.">
+  <h2 class="a">Predicting the next word: an n-gram model</h2>
+  <div class="row grow" style="gap:56px">
+    <div class="col grow"><p class="quote a" style="--d:1; font-size:40px">a quartern of ___</p><div class="chart grow a" style="--d:1" data-chart="quartern"></div></div>
+    <div class="col grow"><p class="quote a" style="--d:2; font-size:40px">a pint of ___</p><div class="chart grow a" style="--d:2" data-chart="pint"></div></div>
+  </div>
+  <p class="point a" style="--d:4">Words that follow the same phrases tend to be similar. Large language models are also trained to predict the next word.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="Real counts from the Old Bailey sample: how often each word (rows) appears within 5 words of each context word (columns). Each row is that word's company profile, a list of four numbers: a vector. Gin and beer: drank and pint. Watch and handkerchief: pocket and stole. Pot is in between: a pewter pot is drunk from, and constantly stolen from alehouses. Beer's numbers are bigger than gin's simply because beer is mentioned more often; the next slide deals with that.">
+  <h2 class="a">A co-occurrence matrix</h2>
+  <table class="mat a" style="--d:1; align-self:center" id="matrix"></table>
+  <p class="point a" style="--d:3">Each row lists how often a word appears near each context word. This list of numbers is a vector.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="A two-dimensional sketch of the four-column vectors: drinking contexts along the bottom, theft contexts up the side. The angles are drawn to make the groups visible; the cosine numbers on the right are calculated from all four columns of the matrix. Beer's arrow is much longer than gin's because beer is mentioned far more often, but the two point in a similar direction. Watch and handkerchief point in a similar direction to each other, at almost a right angle to the drinks. Similarity should not depend on how common a word is, so we measure the angle: cosine similarity, 1 for the same direction, 0 for a right angle. On all four columns: gin–beer 0.87, gin–pot 0.90, pot–watch 0.26, gin–watch 0.04, watch–handkerchief 0.98.">
+  <h2 class="a">Cosine similarity</h2>
+  <div class="row grow" style="gap:64px; align-items:center">
+    <div class="chart a" style="--d:1; width:600px; height:560px" data-chart="arrows"></div>
+    <div class="col grow" style="gap:26px">
+      <p class="a" style="--d:5; font-size:22px; color:var(--muted); font-style:italic">Calculated from all four columns of the matrix</p>
+      <div class="a" style="--d:6"><p class="mono" style="font-size:26px">gin – beer <b style="color:var(--accent); float:right">0.87</b></p></div>
+      <div class="a" style="--d:7"><p class="mono" style="font-size:26px">gin – watch <b style="color:var(--muted); float:right">0.04</b></p></div>
+      <div class="a" style="--d:8"><p class="mono" style="font-size:26px">watch – handkerchief <b style="color:var(--accent); float:right">0.98</b></p></div>
+      <p class="lead a" style="--d:9; font-size:30px">Cosine similarity measures the angle between two vectors: 1 for the same direction, 0 for a right angle. It does not depend on how often a word occurs.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-part="5" data-notes="A full co-occurrence matrix for the Proceedings would have 20,000 rows and 20,000 columns, mostly zeros. word2vec instead gives each word a short list of numbers (100 in the lab's models) and learns them. Step 1: every word starts with random numbers. Step 2: the model moves along the text, a few words at a time, and takes each word with its neighbours as pairs, e.g. gin–quartern, gin–of, gin–fetch. Step 3: for each real pair it predicts, from the two lists of numbers, how likely the two words are to appear together, and adjusts the numbers so that the prediction is better: the numbers for gin and quartern move closer. It also takes a few random words that did not appear (e.g. handkerchief) and moves those apart. Step 4: this is repeated for every word in the corpus, several times over. Words that appear in similar contexts end up with similar numbers. This version is called skip-gram with negative sampling; the lab's models use it. (CBOW, the other version, predicts the middle word from its neighbours.) Press → to go through the steps.">
+  <h2 class="a">How word2vec learns</h2>
+  <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:18px" class="grow">
+    <div class="tile a" style="--d:1"><span class="num">1 · Random start</span><p>Every word gets 100 random numbers.</p>
+      <div class="w2v"><span>gin</span><div class="cells" data-v="0.3,-0.7,0.1,0.9,-0.2,0.5,-0.6,0.2,0.4"></div><span>quartern</span><div class="cells" data-v="-0.5,0.2,0.8,-0.3,0.6,-0.9,0.1,0.7,-0.4"></div><span>handkerchief</span><div class="cells" data-v="0.6,0.4,-0.8,0.1,-0.5,0.3,0.9,-0.2,0.2"></div></div></div>
+    <div class="tile step"><span class="num">2 · Read the text</span><p>Take each word with its neighbours as pairs.</p>
+      <p class="mono" style="font-size:21px; color:var(--ink)">…fetch a quartern of <b style="color:var(--hot)">gin</b>; she brought it…</p>
+      <p class="mono" style="font-size:20px; color:var(--ink-2); line-height:1.6">gin – quartern<br>gin – of<br>gin – fetch<br>gin – she</p></div>
+    <div class="tile step"><span class="num">3 · Predict and adjust</span><p>Real pairs move closer; random pairs move apart.</p>
+      <div class="w2v"><span>gin</span><div class="cells" data-v="0.6,-0.5,0.4,0.7,-0.3,0.6,-0.2,0.5,0.1"></div><span>quartern</span><div class="cells" data-v="0.5,-0.4,0.5,0.6,-0.2,0.7,-0.3,0.4,0.2"></div><span>handkerchief</span><div class="cells" data-v="-0.6,0.5,-0.4,-0.5,0.6,-0.3,0.4,-0.7,0.3"></div></div></div>
+    <div class="tile step"><span class="num">4 · Repeat</span><p>For every word in the corpus, many times. Nearest to gin, 1674–1799:</p>
+      <p class="mono" style="font-size:21px; color:var(--ink); line-height:1.6">beer .86<br>rum .85<br>brandy .84<br>purl .84<br>shrub .83</p></div>
+  </div>
+  <p class="point a" style="--d:3">Words that appear in similar contexts end up with similar numbers.</p>
+</section>
+
+
+
+<section class="slide" data-part="5" data-notes="The classic example: king − man + woman ≈ queen. Top answers in the Old Bailey models: 1800–1913: queen, carlisle, swinton; 1674–1799: kings, peace, soveraign. In the earlier model 'queen' is not the answer: fewer contexts, different usage (the King's peace). Analogies are unreliable, and the failures can be informative. Ask the room why it fails in one period.">
+  <h2 class="a">Analogies</h2>
+  <p class="quote a" style="--d:1; font-style:normal; font-family:var(--display); font-size:64px">king − man + woman ≈ ?</p>
+  <div class="row" style="gap:24px">
+    <div class="tile grow step"><h3>1800–1913 model</h3><p style="font-size:34px; color:var(--ink)">queen ✓</p></div>
+    <div class="tile grow step"><h3 style="color:var(--hot)">1674–1799 model</h3><p style="font-size:34px; color:var(--ink)">kings, peace … ✗</p></div>
+  </div>
+  <p class="point a" style="--d:3">The analogy works in the 1800–1913 model and fails in the 1674–1799 model.</p>
+</section>
+
+
+
+<section class="slide" data-part="5" data-notes="Semantic shift is a change in how a word is used, and so in what it means. To measure it with embeddings: split the corpus into periods, train a separate model for each period, and compare a word's nearest neighbours in each model. If the neighbours change, the word's use changed. Two cautions. The word needs enough uses in each period; with only a few dozen uses the neighbours are noise. And two models trained separately place words in different coordinates, so their numbers cannot be compared directly: compare the neighbour lists, or align the models first (as Hamilton, Leskovec and Jurafsky do). The lab has two models for each corpus, split at 1800.">
+  <h2 class="a">Measuring semantic shift</h2>
+  <div class="row" style="gap:10px; align-items:center">
+    <div class="chip a grow" style="--d:1">Split the corpus by period</div><span class="arrow a" style="--d:2">→</span>
+    <div class="chip a grow" style="--d:2">Train one model per period</div><span class="arrow a" style="--d:3">→</span>
+    <div class="chip a grow" style="--d:3">Compare a word’s neighbours</div>
+  </div>
+  <div class="row" style="gap:24px">
+    <div class="tile a grow" style="--d:5"><h3 style="color:var(--hot)">Enough uses in each period</h3><p>With a few dozen uses, the neighbours are mostly noise.</p></div>
+    <div class="tile a grow" style="--d:6"><h3 style="color:var(--hot)">Compare neighbour lists</h3><p>Separately trained models use different coordinates, so their numbers are not directly comparable.</p></div>
+  </div>
+  <p class="point a" style="--d:8">If a word’s nearest neighbours change between periods, the way the word was used has changed.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="Nearest neighbours of 'electricity' in the two word2vec models trained on the Royal Society Corpus (the second lab notebook), split at 1800. Before 1800 it sits among its own specialist vocabulary: electrified, insulated, excited, electrics and non-electrics (the period's names for conductors and insulators). After 1800 its neighbours include voltaic, magneto, magnetism and heat, and it is discussed together with other physical forces (Ørsted, Faraday; W. R. Grove's 'correlation of physical forces', 1846). The bigram table, the collocation chart and the model show the same change.">
+  <h2 class="a">Neighbours of ‘electricity’</h2>
+  <div class="row" style="gap:64px">
+    <div class="col grow"><p class="eyebrow a" style="--d:1">1665–1799</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+        <div class="chip ghost a" style="--d:2">electrified</div><div class="chip ghost a" style="--d:2">insulated</div><div class="chip ghost a" style="--d:3">excited</div><div class="chip ghost a" style="--d:3">electrics</div><div class="chip ghost a" style="--d:4">nonelectric</div><div class="chip ghost a" style="--d:4">conductor</div>
+      </div></div>
+    <div class="col grow"><p class="eyebrow a" style="--d:5">1800–1920</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+        <div class="chip hot a" style="--d:6">voltaic</div><div class="chip hot a" style="--d:6">magneto</div><div class="chip hot a" style="--d:7">magnetism</div><div class="chip hot a" style="--d:7">heat</div><div class="chip ghost a" style="--d:8">charge</div><div class="chip ghost a" style="--d:8">conductor</div>
+      </div></div>
+  </div>
+  <p class="point a" style="--d:10">After 1800, ‘electricity’ appears near words for magnetism and heat.</p>
+  <p class="src">Nearest neighbours of ‘electricity’ in the Royal Society lab’s two word2vec models.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="Nearest neighbours in the lab's two Dutch parliament models (1814–1917 and 1918–2012, about 27 million words each). 'Burgers' (citizens): before 1918 its neighbours are staatsburgers (citizens of the state), individuen, medeburgers, ingezetenen (inhabitants); after 1918 they include ondernemers (entrepreneurs), consumenten, belangengroepen (interest groups), omwonenden (local residents) and belastingbetaler (taxpayer). Citizens are discussed alongside other groups whose interests the state has to weigh. 'Gemeenschap' (community, connection): before 1918 it is close to verbinding, verkeer and spoorwegverkeer, because it was often used for a transport connection; after 1918 it is close to unie, eenwording and europese: the European Communities. Two separate models, so we compare neighbour lists. Students can try their own words in the lab.">
+  <h2 class="a">Neighbours in the Dutch parliament</h2>
+  <div class="cmp">
+    <span></span><span class="h a" style="--d:1">1814–1917</span><span class="h a" style="--d:1">1918–2012</span>
+    <span class="w a" style="--d:2">burgers</span><span class="c a" style="--d:2">staatsburgers · individuen · medeburgers · ingezetenen</span><span class="c a" style="--d:3">ondernemers · consumenten · belangengroepen · belastingbetaler</span>
+    <span class="w a" style="--d:5">gemeenschap</span><span class="c a" style="--d:5">verbinding · verkeer · spoorwegverkeer · communicatie</span><span class="c a" style="--d:6">unie · eenwording · europa · alliantie</span>
+  </div>
+  <p class="point a" style="--d:8">After 1918, ‘burgers’ appears with consumers and taxpayers, and ‘gemeenschap’ with European integration.</p>
+  <p class="src">Nearest neighbours in the Dutch parliament lab’s two word2vec models (1814–1917, 1918–2012).</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="Training embeddings per period and comparing them shows semantic shift. Left: Hamilton, Leskovec and Jurafsky, 'Diachronic word embeddings reveal statistical laws of semantic change' (2016): gay, broadcast, awful. Right: semantic shift of individual words in Dutch newspapers, with frequency: the basis for Exercise 2.">
+  <h2 class="a">Semantic change in research</h2>
+  <div class="row grow" style="gap:40px; align-items:center">
+    <img class="fig frame a grow" style="--d:1; height:400px" src="media/image-40-1.png" alt="Semantic change of gay, broadcast and awful (Hamilton et al. 2016)">
+    <img class="fig frame a grow" style="--d:3; height:300px" src="media/image-40-2.png" alt="Semantic shifts of words in Dutch newspapers">
+  </div>
+  <p class="point a" style="--d:5">Hamilton et al. trace the changing neighbours of ‘gay’, ‘broadcast’ and ‘awful’.</p>
+  <p class="src">Left: Hamilton, Leskovec and Jurafsky (2016). Right: Dutch newspapers, with frequency.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="Nearest neighbours from the lab's two Old Bailey models. Names: after 1800, three of the eight nearest neighbours of 'police' are surnames (helson, checkley, langrish), most likely police officers who often gave evidence; 'maroney', Detective Stephen Maroney, is among the neighbours of 'constable'. Institutions: before 1800, 'police' is closest to office, rotation, bow and marlborough: the Rotation Office and the Bow Street and Marlborough Street police offices, not a police force. Spelling and transcription: 'murder' is closest to 'murther'; 'watchhouse' is close to 'watchouse' and to 'computer', which looks like a misreading or variant of 'Compter', the name of two London prisons. The models reflect the Proceedings and the people who produced and digitised them.">
+  <h2 class="a">What the models learn</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px">
+    <div class="tile a" style="--d:1"><h3>Names</h3><p style="font-size:20px; color:var(--muted); font-style:italic">‘police’, 1800–1913</p>
+      <div class="mono" style="display:grid; grid-template-columns:1fr auto; gap:6px 16px; font-size:23px; color:var(--ink)"><span style="">detective</span><span style="color:var(--muted); text-align:right">.72</span><span style="">sergeant</span><span style="color:var(--muted); text-align:right">.69</span><span style="">inspector</span><span style="color:var(--muted); text-align:right">.64</span><span style="color:var(--hot); font-weight:500">helson</span><span style="color:var(--muted); text-align:right">.64</span><span style="color:var(--hot); font-weight:500">checkley</span><span style="color:var(--muted); text-align:right">.62</span><span style="color:var(--hot); font-weight:500">langrish</span><span style="color:var(--muted); text-align:right">.62</span></div></div>
+    <div class="tile a" style="--d:2"><h3>Institutions</h3><p style="font-size:20px; color:var(--muted); font-style:italic">‘police’, 1674–1799</p>
+      <div class="mono" style="display:grid; grid-template-columns:1fr auto; gap:6px 16px; font-size:23px; color:var(--ink)"><span style="">office</span><span style="color:var(--muted); text-align:right">.78</span><span style="color:var(--hot); font-weight:500">rotation</span><span style="color:var(--muted); text-align:right">.75</span><span style="color:var(--hot); font-weight:500">bow</span><span style="color:var(--muted); text-align:right">.72</span><span style="">runner</span><span style="color:var(--muted); text-align:right">.71</span><span style="">officer</span><span style="color:var(--muted); text-align:right">.69</span><span style="color:var(--hot); font-weight:500">marlborough</span><span style="color:var(--muted); text-align:right">.69</span></div></div>
+    <div class="tile a" style="--d:3"><h3>Spelling and transcription</h3><p style="font-size:20px; color:var(--muted); font-style:italic">two words, 1674–1799</p>
+      <div class="mono" style="display:grid; grid-template-columns:1fr auto; gap:6px 16px; font-size:20px; color:var(--ink)"><span style="color:var(--hot); font-weight:500">murder: murther</span><span style="color:var(--muted); text-align:right">.83</span><span style="">murder: wilful</span><span style="color:var(--muted); text-align:right">.67</span><span style="color:var(--hot); font-weight:500">watchhouse: watchouse</span><span style="color:var(--muted); text-align:right">.78</span><span style="">watchhouse: roundhouse</span><span style="color:var(--muted); text-align:right">.71</span><span style="color:var(--hot); font-weight:500">watchhouse: computer</span><span style="color:var(--muted); text-align:right">.66</span></div></div>
+  </div>
+  <p class="point a" style="--d:5">The neighbour lists include people, places and spellings that are specific to the Proceedings.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="http://macroscope.intelligence-media.com. Translate your concept from Exercise 1 (or choose a new one); compare frequency, semantic shift and the collocation network across periods; add your concept to Wooclap.">
+  <p class="eyebrow a">Exercise 2</p>
+  <h2 class="a" style="--d:1">Semantic shift</h2>
+  <div class="col" style="gap:14px">
+    <div class="tile a" style="--d:2; flex-direction:row; align-items:center; gap:24px"><span class="num">1</span><p style="color:var(--ink)">Open macroscope.intelligence-media.com</p></div>
+    <div class="tile a" style="--d:3; flex-direction:row; align-items:center; gap:24px"><span class="num">2</span><p style="color:var(--ink)">Choose your concept from Exercise 1</p></div>
+    <div class="tile a" style="--d:4; flex-direction:row; align-items:center; gap:24px"><span class="num">3</span><p style="color:var(--ink)">Compare its neighbours across periods</p></div>
+  </div>
+  <p class="point a" style="--d:6">Then add your concept to Wooclap.</p>
+</section>
+
+<section class="slide" data-part="5" data-notes="Summary of Part 5 before the pitfalls.">
+  <p class="eyebrow a">Summary</p>
+  <h2 class="a" style="--d:1">Embeddings</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:2"><h3>What it measures</h3><p style="color:var(--ink)">How similar words are, based on all the contexts they appear in.</p></div>
+    <div class="tile a" style="--d:3"><h3>What we saw</h3><p style="color:var(--ink)">‘Gin’ is close to beer, rum and brandy; ‘electricity’ moves near magnetism and heat; Dutch ‘burgers’ moves near consumers and taxpayers.</p></div>
+    <div class="tile a" style="--d:4"><h3 style="color:var(--hot)">Watch out for</h3><p style="color:var(--ink)">Needs a lot of text; the neighbours include names, spellings and institutions specific to the corpus.</p></div>
+    <div class="tile a" style="--d:5"><h3>In the lab</h3><p style="color:var(--ink)">Compare two words, find neighbours in two periods, try analogies, and explore the map.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-part="5" data-notes="Recap before the pitfalls. All three methods count words in context and compare: over time, between groups, between periods. Frequency asks how often; association asks in what company; embeddings ask what a word means, from all its contexts at once. Each has its typical trap. And all three end the same way: go back and read.">
+  <h2 class="a">Summary of the three methods</h2>
+  <table class="plain a" style="--d:1; width:100%; font-size:28px">
+    <tr><th></th><th>Frequency</th><th>Association</th><th>Embeddings</th></tr>
+    <tr><td class="mono" style="color:var(--muted); font-size:20px">ASKS</td><td>How often?</td><td>In what company?</td><td>What does it mean?</td></tr>
+    <tr><td class="mono" style="color:var(--muted); font-size:20px">EXAMPLE</td><td>electric fire → current</td><td>freedom from, liberty to</td><td>‘electricity’ near magnetism after 1800</td></tr>
+    <tr><td class="mono" style="color:var(--muted); font-size:20px">TRAP</td><td>the corpus changes</td><td>rare words, the comparison</td><td>reflects the corpus</td></tr>
+  </table>
+  <p class="point a" style="--d:3">All three methods count words in context and compare the counts; the results then need to be checked against the texts.</p>
+</section>
+
+<!-- ============ PART 6 ============ -->
+<section class="slide dark divider" data-part="6" data-notes="Dangers and next steps. This part returns to the third question from Part 1: did the corpus change?">
+  <p class="part a">Part 6</p><h2 class="a" style="--d:1">Pitfalls</h2><p class="sub a" style="--d:2">What goes wrong, and how to build a corpus that answers your question</p>
+  <div class="track f" style="--d:3"></div>
+</section>
+
+<section class="slide" data-part="6" data-notes="Ask the room before moving on: what could explain the rise in 'asteroid' from the 1860s onwards, with a peak in the early 1870s? Possible answers: astronomical discoveries, a ship, a person, a horse. Next slide: the answer.">
+  <h2 class="a">‘Asteroid’ in American newspapers, 1820–1900</h2>
+  <img class="fig frame a grow" style="--d:1; height:540px; align-self:center" src="media/image-44-1.png" alt="Frequency of 'asteroid' in American newspapers, 1820–1900">
+  <p class="point a" style="--d:3">What could explain the rise from the 1860s onwards?</p>
+</section>
+
+<section class="slide" data-part="6" data-notes="Asteroid was a well-known American racehorse, foaled in 1861 and unbeaten in his races of the mid-1860s. The peak in the early 1870s comes after his racing career, so it is worth reading the articles to see whether they are about the horse, his offspring or something else. Newspapers use words for many reasons: take into account the specific historical circumstances of your sources.">
+  <h2 class="a">The answer: a racehorse</h2>
+  <div class="row grow" style="gap:40px; align-items:center">
+    <img class="fig frame a grow" style="--d:1; height:470px" src="media/image-44-1.png" alt="Frequency of 'asteroid' in American newspapers, 1820–1900">
+    <img class="fig frame a" style="--d:3; height:470px" src="media/image-44-2.png" alt="Wikipedia article on Asteroid, the racehorse">
+  </div>
+  <p class="point a" style="--d:5">Much of the rise in ‘asteroid’ comes from reports about a racehorse of that name.</p>
+</section>
+
+<section class="slide" data-part="6" data-notes="A pitfall of collocation counts, using the liberty example from Part 4. The same check in the Old Bailey: almost every 'liberty to' refers to permission (to go into the yard, to depart, to go on shore). Even 'liberty from' is permission: 'liberty from the master to sleep in the yard' (1807). So a high 'to' share does not show that people favoured positive liberty. Regan makes the same kind of check. Collocation counts show where to read.">
+  <h2 class="a">‘Liberty to’ in the Old Bailey</h2>
+  <div class="kwic">
+    <div class="y a" style="--d:1">1717</div><div class="l a" style="--d:1"><bdi>…the Prisoner came to the House desiring</bdi></div><div class="k a" style="--d:1">liberty to</div><div class="r a" style="--d:1">go into the Yard…</div>
+    <div class="y a" style="--d:2">1788</div><div class="l a" style="--d:2"><bdi>…Court to Cole. Was you at</bdi></div><div class="k a" style="--d:2">liberty to</div><div class="r a" style="--d:2">depart during that time?…</div>
+    <div class="y a" style="--d:3">1796</div><div class="l a" style="--d:3"><bdi>…when he had</bdi></div><div class="k a" style="--d:3">liberty to</div><div class="r a" style="--d:3">go on shore for a few hours…</div>
+    <div class="y a" style="--d:4">1807</div><div class="l a" style="--d:4"><bdi>…after that he had</bdi></div><div class="k a" style="--d:4">liberty from</div><div class="r a" style="--d:4">the master to sleep in the yard…</div>
+  </div>
+  <p class="point a" style="--d:6">In these examples, ‘liberty to’ usually means permission.</p>
+  <p class="src">Concordance lines for ‘liberty to’ and ‘liberty from’, Old Bailey sample.</p>
+</section>
+
+<section class="slide" data-part="6" data-notes="A pitfall of counting: the source changes. Median words per trial in the Old Bailey sample. The changes in trial length reflect changes in printing: the Proceedings changed from short pamphlets to near-verbatim shorthand records, and were cut down again in the 1890s–1900s. Every count is a count of the source, and only indirectly of the past. Students make this chart in Part 1 of the lab.">
+  <h2 class="a">Trial length in the Proceedings</h2>
+  <div class="chart grow a" style="--d:1" data-chart="median"></div>
+  <p class="point a" style="--d:3">The changes in length reflect changes in how the Proceedings were printed.</p>
+</section>
+
+<section class="slide" data-part="6" data-notes="Visualisations that hide more than they show: word clouds of presidential speeches. Misreading the sources: 'national wellbeing' from millions of books (Hills et al., 'Historical analysis of national subjective wellbeing using millions of digitized books'). Plain mistakes: the Nature retraction ('we should have labelled moralizing gods as absent or inferred absent rather than unknown... rather than converting NAs to zeros'). Digitisation errors: 'Cafes of Nouns' for 'Cases of Nouns'.">
+  <h2 class="a">Other common problems</h2>
+  <div class="row grow" style="gap:24px; align-items:flex-start">
+    <div class="col grow a" style="--d:1"><img class="fig frame" src="media/image-45-1.png" alt="Word clouds of presidential speeches" style="height:330px; margin:auto"><h3 style="font-family:var(--serif); font-size:28px; color:var(--accent); text-align:center">Misleading visuals</h3></div>
+    <div class="col grow a" style="--d:2"><img class="fig frame" src="media/image-45-2.png" alt="National wellbeing charts from digitised books" style="height:330px; margin:auto"><h3 style="font-family:var(--serif); font-size:28px; color:var(--accent); text-align:center">Misread sources</h3></div>
+    <div class="col grow a" style="--d:3"><img class="fig frame" src="media/image-45-3.png" alt="Nature retraction notice" style="height:330px; margin:auto"><h3 style="font-family:var(--serif); font-size:28px; color:var(--accent); text-align:center">Plain mistakes</h3></div>
+    <div class="col grow a" style="--d:4"><img class="fig frame" src="media/image-45-4.png" alt="OCR reading 'Cases' as 'Cafes'" style="height:330px; margin:auto"><h3 style="font-family:var(--serif); font-size:28px; color:var(--accent); text-align:center">Digitisation errors</h3></div>
+  </div>
+</section>
+
+<section class="slide" data-part="6" data-notes="Cliodynamics (Peter Turchin): can large historical datasets predict the future? What would we need to believe about the sources? A discussion point: echoes of cliometrics (Part 1).">
+  <h2 class="a">Cliodynamics</h2>
+  <div class="row grow" style="gap:40px; align-items:center">
+    <img class="fig frame a grow" style="--d:1; height:420px" src="media/image-46-1.jpeg" alt="Still from a science-fiction film evoking predictive history">
+    <img class="fig frame a grow" style="--d:3; height:420px" src="media/image-46-2.jpeg" alt="Peter Turchin's chart of US political violence">
+  </div>
+  <p class="point a" style="--d:5">What would we need to believe <b>about the sources</b>?</p>
+</section>
+
+<section class="slide" data-part="6" data-notes="Use these when planning your own project: what is your research question; which comparison do you want to make; do you have data from your whole period; what are the biases in your collection and how can you address them?">
+  <h2 class="a">Building a corpus: four questions</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+    <div class="tile a" style="--d:1"><span class="num">1</span><p style="color:var(--ink); font-size:32px">What is your question?</p></div>
+    <div class="tile a" style="--d:2"><span class="num">2</span><p style="color:var(--ink); font-size:32px">What will you compare?</p></div>
+    <div class="tile a" style="--d:3"><span class="num">3</span><p style="color:var(--ink); font-size:32px">Does the data cover your period?</p></div>
+    <div class="tile a" style="--d:4"><span class="num">4</span><p style="color:var(--ink); font-size:32px">What are its biases?</p></div>
+  </div>
+</section>
+
+<section class="slide" data-part="6" data-notes="Gale Scholar Lab (build and analyse corpora from Gale collections); Voyant Tools (quick counts and concordances, voyant-tools.org); Programming Historian (free tutorials, programminghistorian.org); Google Books Ngram Viewer (books.google.com/ngrams); LUCDH (lab, courses, electives, minor in DH, workshops); marimo (the notebooks for next week's lab, marimo.io).">
+  <h2 class="a">Tools to try</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px">
+    <div class="tile a" style="--d:1"><h3>Voyant Tools</h3><p class="mono" style="font-size:20px">voyant-tools.org</p></div>
+    <div class="tile a" style="--d:2"><h3>Google Books Ngram Viewer</h3><p class="mono" style="font-size:20px">books.google.com/ngrams</p></div>
+    <div class="tile a" style="--d:3"><h3>Gale Scholar Lab</h3><p class="mono" style="font-size:20px">via the library</p></div>
+    <div class="tile a" style="--d:4"><h3>Programming Historian</h3><p class="mono" style="font-size:20px">programminghistorian.org</p></div>
+    <div class="tile a" style="--d:5"><h3>LUCDH</h3><p class="mono" style="font-size:20px">courses, minor, workshops</p></div>
+    <div class="tile a" style="--d:6"><h3>marimo</h3><p class="mono" style="font-size:20px">marimo.io</p></div>
+  </div>
+</section>
+
+<section class="slide dark title-slide" data-part="0" data-notes="Three notebooks: the Old Bailey, the Royal Society's journals and the Dutch parliament. Count words and phrases, find collocations and distinctive words, and explore embeddings (gin, constable, electricity...). Bring a laptop; think of one word to follow through 250 years. First load takes about 30 seconds.">
+  <p class="eyebrow a">Next week</p>
+  <h1 class="a" style="--d:1; font-size:120px">Hands-on lab</h1>
+  <p class="sub a mono" style="--d:2; font-style:normal; font-size:34px">yann-ryan.github.io/marimo-digi-hist</p>
+  <p class="by a" style="--d:3">Chrome on a laptop · no install, no account · click ‘run all’ once</p>
+</section>
+
+<div id="mini" aria-hidden="true"></div>
+</div></div>
+
+<div id="notes" hidden></div>
+<div id="help">← → or click · P presenter view · N notes · F full screen</div>
+<div id="presenter" hidden><div class="pv-top"><span id="pv-count"></span><span id="pv-time">0:00</span><button id="pv-reset" type="button">Reset timer</button></div><p class="pv-label">Notes</p><div id="pv-notes"></div><p class="pv-label">Next</p><div id="pv-next"></div><div class="pv-nav"><button id="pv-prev" type="button">← Previous</button><button id="pv-nextb" type="button">Next →</button></div></div>
+<div id="ui">
+  <button id="bpv" type="button" aria-label="Open presenter view">Presenter</button>
+  <button id="bn" type="button" aria-label="Show speaker notes">Notes</button>
+  <button id="bf" type="button" aria-label="Full screen">Full screen</button>
+  <button id="bp" type="button" aria-label="Previous slide">←</button>
+  <span id="count">1 / 1</span>
+  <button id="bx" type="button" aria-label="Next slide">→</button>
+</div>
+<div id="tip" role="status"></div>
+
+<script>
+const DATA = {"ebg":[{"period":"1725\u20131749","charge":0.0,"current":0.6,"effluvia":32.3,"field":0.0,"fire":24.7,"fish":0.0,"fluid":1.9,"light":0.0,"machine":3.2,"matter":27.9,"organ":0.0,"resistance":0.0,"shock":2.5,"spark":5.1,"telegraph":0.0,"virtue":31.7,"waves":0.0},{"period":"1750\u20131774","charge":0.8,"current":1.3,"effluvia":1.7,"field":0.0,"fire":35.6,"fish":0.0,"fluid":88.5,"light":0.8,"machine":8.0,"matter":43.6,"organ":11.9,"resistance":0.0,"shock":8.5,"spark":8.9,"telegraph":0.0,"virtue":4.7,"waves":0.0},{"period":"1775\u20131799","charge":7.6,"current":0.0,"effluvia":0.0,"field":0.0,"fire":22.2,"fish":3.8,"fluid":67.4,"light":6.3,"machine":13.2,"matter":19.5,"organ":7.3,"resistance":0.0,"shock":15.6,"spark":34.0,"telegraph":0.0,"virtue":0.3,"waves":0.0},{"period":"1800\u20131824","charge":1.3,"current":4.8,"effluvia":0.3,"field":0.0,"fire":0.0,"fish":1.0,"fluid":8.0,"light":3.8,"machine":4.8,"matter":0.6,"organ":14.6,"resistance":0.0,"shock":9.2,"spark":18.8,"telegraph":0.0,"virtue":0.0,"waves":0.0},{"period":"1825\u20131849","charge":2.0,"current":138.1,"effluvia":0.0,"field":0.0,"fire":0.0,"fish":3.2,"fluid":12.4,"light":3.8,"machine":12.4,"matter":1.1,"organ":20.7,"resistance":0.0,"shock":1.6,"spark":12.6,"telegraph":1.1,"virtue":0.0,"waves":0.0},{"period":"1850\u20131874","charge":1.1,"current":41.0,"effluvia":0.0,"field":0.0,"fire":0.0,"fish":0.9,"fluid":0.4,"light":14.8,"machine":8.1,"matter":0.0,"organ":1.4,"resistance":4.0,"shock":0.3,"spark":8.9,"telegraph":3.1,"virtue":0.0,"waves":0.2},{"period":"1875\u20131899","charge":2.8,"current":49.8,"effluvia":0.0,"field":7.3,"fire":0.0,"fish":0.4,"fluid":0.1,"light":16.6,"machine":5.4,"matter":0.0,"organ":19.5,"resistance":18.9,"shock":1.1,"spark":5.4,"telegraph":1.2,"virtue":0.0,"waves":5.4},{"period":"1900\u20131924","charge":5.5,"current":35.1,"effluvia":0.0,"field":24.6,"fire":0.0,"fish":0.1,"fluid":0.1,"light":7.4,"machine":0.9,"matter":0.0,"organ":2.4,"resistance":9.2,"shock":1.2,"spark":4.6,"telegraph":0.1,"virtue":0.0,"waves":15.0}],"egr":[{"period":"1725\u20131749","n":1664,"per10k":10.55,"rubbing & attraction":14.1,"fluid & fire":5.5,"living bodies":0.9,"other forces":0.4,"current & measurement":0.8,"machines & technology":1.1},{"period":"1750\u20131774","n":1876,"per10k":7.95,"rubbing & attraction":4.7,"fluid & fire":17.8,"living bodies":3.6,"other forces":0.7,"current & measurement":0.7,"machines & technology":1.9},{"period":"1775\u20131799","n":1897,"per10k":6.59,"rubbing & attraction":2.4,"fluid & fire":14.9,"living bodies":5.1,"other forces":0.7,"current & measurement":0.1,"machines & technology":3.5},{"period":"1800\u20131824","n":1084,"per10k":3.45,"rubbing & attraction":2.9,"fluid & fire":3.8,"living bodies":8.0,"other forces":6.8,"current & measurement":2.6,"machines & technology":4.2},{"period":"1825\u20131849","n":4078,"per10k":9.19,"rubbing & attraction":1.4,"fluid & fire":1.9,"living bodies":6.2,"other forces":4.7,"current & measurement":20.6,"machines & technology":3.8},{"period":"1850\u20131874","n":3973,"per10k":3.49,"rubbing & attraction":0.6,"fluid & fire":0.3,"living bodies":6.1,"other forces":7.5,"current & measurement":20.5,"machines & technology":6.9},{"period":"1875\u20131899","n":11277,"per10k":6.08,"rubbing & attraction":0.4,"fluid & fire":0.4,"living bodies":5.0,"other forces":4.6,"current & measurement":18.0,"machines & technology":4.5},{"period":"1900\u20131924","n":8830,"per10k":5.4,"rubbing & attraction":0.4,"fluid & fire":0.2,"living bodies":1.9,"other forces":5.2,"current & measurement":18.0,"machines & technology":2.5}],"chag":{"en":[0.09,0.09,0.06,0.03,0.0,0.0,0.0,0.0,0.37,0.77,0.83,1.19,4.69,6.56,8.72,7.32,7.61,6.25,6.49,8.91,8.69,8.02,6.71,7.31,7.86,6.49,7.16,7.55,21.01,22.05,24.88,17.75,24.47,30.57,35.28,50.82,52.92,53.2,37.03,35.39,30.98,30.46,26.97,26.76,25.77,25.31],"de":[0.45,0.45,1.14,8.89,15.31,15.16,12.66,15.76,24.61,30.65,28.43,25.09,24.81,32.99,46.08,45.98,40.39,30.09,26.11,21.82,19.36,15.49,13.94,8.79,9.9,8.19,8.17,5.81,4.66,3.43,2.03,2.25,2.25,6.34,17.99,32.78,56.81,77.82,79.89,71.08,52.05,61.0,61.27,72.29,73.6,80.02]}};
+const PARTS = ["Why count?", "Data", "Frequency", "Association", "Embeddings", "Pitfalls"];
+const NS = "http://www.w3.org/2000/svg";
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const S = { s1: css("--s1"), s2: css("--s2"), s3: css("--s3"), s4: css("--s4"), s5: css("--s5") };
+function el(tag, attrs = {}, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function txt(parent, x, y, s, attrs = {}) { const t = el("text", Object.assign({ x, y }, attrs), parent); t.textContent = s; return t; }
+const tip = document.getElementById("tip");
+function hover(node, label) {
+  node.addEventListener("mousemove", (e) => { tip.textContent = label; tip.style.left = e.clientX + 14 + "px"; tip.style.top = e.clientY - 34 + "px"; tip.classList.add("on"); });
+  node.addEventListener("mouseleave", () => tip.classList.remove("on"));
+}
+function svgFor(host, W, H) { const s = el("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "xMidYMid meet", role: "img" }); host.appendChild(s); return s; }
+
+// line chart with one y scale, direct end labels, crosshair-style hover on points
+function lineChart(host, { labels, series, yMax, yStep, yTitle, every = 1, W = 1400, H = 470, endPad = 230, aria }) {
+  const s = svgFor(host, W, H); s.setAttribute("aria-label", aria);
+  const L = 70, R = W - endPad, T = 20, B = H - 50;
+  const x = (i) => L + (R - L) * (labels.length === 1 ? 0.5 : i / (labels.length - 1));
+  const y = (v) => B - (B - T) * (v / yMax);
+  for (let v = 0; v <= yMax + 1e-9; v += yStep) { el("line", { x1: L, x2: R, y1: y(v), y2: y(v), class: v === 0 ? "base" : "grid" }, s); txt(s, L - 12, y(v) + 6, String(Math.round(v)), { "text-anchor": "end" }); }
+  labels.forEach((l, i) => { if (i % every === 0) txt(s, x(i), B + 32, l, { "text-anchor": "middle" }); });
+  if (yTitle) txt(s, L, T - 2, yTitle, { class: "ttl", "text-anchor": "start", dy: "-6" });
+  const ends = [];
+  series.forEach((sr, k) => {
+    const d = sr.values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    el("path", { d, fill: "none", stroke: sr.color, "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round", pathLength: 1, class: "draw", style: `--d:${k * 2}` }, s);
+    if (sr.dots !== false) sr.values.forEach((v, i) => { const c = el("circle", { cx: x(i), cy: y(v), r: 5, fill: sr.color, stroke: css("--paper"), "stroke-width": 2, class: "f", style: `--d:${k * 2 + 6}` }, s); });
+    const last = sr.values.length - 1; ends.push({ name: sr.name, y: y(sr.values[last]), color: sr.color });
+    sr.values.forEach((v, i) => { const h = el("circle", { cx: x(i), cy: y(v), r: 16, class: "hit" }, s); hover(h, `${sr.name} · ${labels[i]}: ${v}`); });
+  });
+  ends.sort((a, b) => a.y - b.y); for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 26) ends[i].y = ends[i - 1].y + 26;
+  const over = ends.length ? ends[ends.length - 1].y - (B - 6) : 0; if (over > 0) { ends[ends.length - 1].y -= over; for (let i = ends.length - 2; i >= 0; i--) if (ends[i + 1].y - ends[i].y < 26) ends[i].y = ends[i + 1].y - 26; }
+  ends.forEach((e, k) => { el("line", { x1: R + 8, x2: R + 30, y1: e.y, y2: e.y, stroke: e.color, "stroke-width": 3, class: "f", style: `--d:${8 + k}` }, s); txt(s, R + 38, e.y + 7, e.name, { class: "lab f", style: `--d:${8 + k}` }); });
+}
+// horizontal bars, labels in ink, values at the end
+function barChart(host, { items, color, max, fmt = (v) => v, W = 760, rowH = 62, labelW = 180, aria }) {
+  const H = items.length * rowH + 10; const s = svgFor(host, W, H); s.setAttribute("aria-label", aria);
+  const x = (v) => (W - labelW - 90) * (v / max);
+  items.forEach(([l, v], i) => {
+    const yy = i * rowH + 8, h = rowH - 18;
+    txt(s, labelW - 16, yy + h / 2 + 7, l, { "text-anchor": "end", class: "lab", style: "font-weight:500" });
+    const r = el("rect", { x: labelW, y: yy, width: Math.max(2, x(v)), height: h, rx: 4, fill: color, class: "bx", style: `--d:${i}` }, s);
+    hover(r, `${l}: ${fmt(v)}`);
+    txt(s, labelW + x(v) + 12, yy + h / 2 + 7, fmt(v), { class: "val f", style: `--d:${i + 4}` });
+  });
+}
+
+const charts = {
+  fire(h) { const e = DATA.ebg; lineChart(h, { labels: e.map((d) => d.period.slice(0, 4) + "–" + d.period.slice(-2)), series: [{ name: "electric fire", values: e.map((d) => d.fire), color: S.s2 }, { name: "electric current", values: e.map((d) => d.current), color: S.s1 }], yMax: 150, yStep: 50, yTitle: "per million words", W: 900, H: 470, endPad: 220, aria: "Electric fire and electric current per million words, 1725 to 1924" }); },
+  why(h) { const v = [0.3, 0.35, 0.4, 0.5, 0.45, 0.6, 0.8, 1.1, 1.6, 2.0]; const s = svgFor(h, 560, 360); s.setAttribute("aria-label", "Illustration: a word getting more frequent");
+    const d = v.map((t, i) => `${i ? "L" : "M"}${20 + i * 58},${330 - t * 150}`).join(""); el("line", { x1: 10, x2: 550, y1: 340, y2: 340, class: "base" }, s);
+    el("path", { d, fill: "none", stroke: S.s1, "stroke-width": 5, "stroke-linecap": "round", pathLength: 1, class: "draw" }, s); txt(s, 20, 30, "frequency (illustration)", { class: "ttl" }); },
+  median(h) { const lab = ["1670s","1680s","1690s","1700s","1710s","1720s","1730s","1740s","1750s","1760s","1770s","1780s","1790s","1800s","1810s","1820s","1830s","1840s","1850s","1860s","1870s","1880s","1890s","1900s","1910s"];
+    const val = [108,94.5,98,90,114,84,48,157.5,312,346,188,364,513.5,451.5,266.5,284,290.5,253,357.5,395,350.5,382,73.5,99,317.5];
+    const W = 1400, H = 470, L = 70, B = H - 50, T = 30, max = 600; const s = svgFor(h, W, H); s.setAttribute("aria-label", "Median words per trial by decade, Old Bailey sample");
+    const bw = (W - L) / lab.length; for (let v = 0; v <= max; v += 200) { const yy = B - (B - T) * v / max; el("line", { x1: L, x2: W, y1: yy, y2: yy, class: v ? "grid" : "base" }, s); txt(s, L - 12, yy + 6, String(v), { "text-anchor": "end" }); }
+    txt(s, L, T - 8, "median words per trial", { class: "ttl" });
+    val.forEach((v, i) => { const hh = (B - T) * v / max; const r = el("rect", { x: L + i * bw + 5, y: B - hh, width: bw - 10, height: hh, rx: 4, fill: (lab[i] === "1890s" || lab[i] === "1900s") ? S.s2 : S.s1, class: "by", style: `--d:${i}` }, s); hover(r, `${lab[i]}: ${v} words`); if (i % 3 === 0) txt(s, L + i * bw + bw / 2, B + 32, lab[i], { "text-anchor": "middle" }); }); },
+  watch(h) { barChart(h, { items: [["the watch", 1661], ["watch house", 647], ["my watch", 558], ["a watch", 486], ["watch value", 275], ["silver watch", 258]], color: S.s1, max: 1700, labelW: 210, W: 900, aria: "Commonest bigrams with watch in the Old Bailey sample" }); },
+  chagall(h) { const yrs = []; for (let y = 1910; y <= 1955; y++) yrs.push(String(y));
+    lineChart(h, { labels: yrs, series: [{ name: "German books", values: DATA.chag.de, color: S.s2, dots: false }, { name: "English books", values: DATA.chag.en, color: S.s1, dots: false }], yMax: 90, yStep: 30, every: 5, yTitle: "‘Marc Chagall’ per billion words", aria: "Marc Chagall in German and English books, 1910 to 1955" }); },
+  groups(h) { const e = DATA.egr; const keys = [["current & measurement", S.s1], ["fluid & fire", S.s2], ["living bodies", S.s3], ["rubbing & attraction", S.s4], ["machines & technology", S.s5]];
+    lineChart(h, { labels: e.map((d) => d.period.slice(0, 4) + "–" + d.period.slice(-2)), series: keys.map(([k, c]) => ({ name: k, values: e.map((d) => d[k]), color: c })), yMax: 25, yStep: 5, yTitle: "words per 100 uses of electric*", endPad: 290, aria: "Groups of words near electricity, 1725 to 1924" }); },
+  liberty(h) { const per = ["1600–40", "1660–1700", "1700–40", "1760–1800"];
+    const lib = [[234, 3143], [1272, 19913], [2791, 68788], [5934, 154122]].map(([f, t]) => Math.round(100 * f / (f + t)));
+    const fre = [[1285, 511], [431, 189], [5890, 5639], [15667, 12597]].map(([f, t]) => Math.round(100 * f / (f + t)));
+    const W = 980, H = 470, L = 70, B = H - 50, T = 40; const s = svgFor(h, W, H); s.setAttribute("aria-label", "Share of from among from and to, for freedom and liberty, four periods");
+    for (let v = 0; v <= 100; v += 25) { const yy = B - (B - T) * v / 100; el("line", { x1: L, x2: W, y1: yy, y2: yy, class: v ? "grid" : "base" }, s); txt(s, L - 12, yy + 6, v + "%", { "text-anchor": "end" }); }
+    txt(s, L, T - 14, "‘from’ as % of ‘from’ + ‘to’", { class: "ttl" });
+    const gw = (W - L) / per.length, bw = 64;
+    per.forEach((p, i) => { const cx = L + gw * i + gw / 2; [[fre[i], S.s1, "freedom"], [lib[i], S.s2, "liberty"]].forEach(([v, c, n], k) => {
+      const hh = (B - T) * v / 100, xx = cx - bw - 4 + k * (bw + 8); const r = el("rect", { x: xx, y: B - hh, width: bw, height: hh, rx: 4, fill: c, class: "by", style: `--d:${i * 2 + k}` }, s); hover(r, `${n} ${p}: ${v}% ‘from’`);
+      txt(s, xx + bw / 2, B - hh - 10, v + "%", { "text-anchor": "middle", class: "val f", style: `--d:${i * 2 + k + 4}` }); });
+      txt(s, cx, B + 32, p, { "text-anchor": "middle" }); });
+    const lg = el("g", { class: "f", style: "--d:8" }, s); el("rect", { x: W - 260, y: 0, width: 22, height: 6, rx: 3, fill: S.s1 }, lg); txt(lg, W - 230, 8, "freedom", { class: "lab" }); el("rect", { x: W - 120, y: 0, width: 22, height: 6, rx: 3, fill: S.s2 }, lg); txt(lg, W - 90, 8, "liberty", { class: "lab" }); },
+  gender(h) { const men = [["driving", 5.5], ["carnally", 4.82], ["fraudulently", 4.7], ["uniform", 4.68], ["bay", 4.43], ["bridle", 4.39]];
+    const wom = [["pregnancy", 4.11], ["quilted", 3.48], ["spinster", 3.13], ["stays", 2.9], ["petticoats", 2.87], ["midwife", 2.85]];
+    const W = 1400, H = 470, mid = 700, sc = 105, rowH = 70; const s = svgFor(h, W, H); s.setAttribute("aria-label", "Most distinctive words in trials of men and of women");
+    txt(s, mid - 20, 22, "more common in trials of men", { "text-anchor": "end", class: "ttl" }); txt(s, mid + 20, 22, "more common in trials of women", { class: "ttl" });
+    el("line", { x1: mid, x2: mid, y1: 34, y2: H, class: "base" }, s);
+    men.forEach(([w, v], i) => { const yy = 44 + i * rowH; const r = el("rect", { x: mid - v * sc, y: yy, width: v * sc, height: rowH - 22, rx: 4, fill: S.s1, class: "bx", style: `--d:${i}; transform-origin:right center` }, s); hover(r, `${w}: ${v}× (log₂)`); txt(s, mid - v * sc - 14, yy + (rowH - 22) / 2 + 7, w, { "text-anchor": "end", class: "lab", style: "font-weight:500" }); });
+    wom.forEach(([w, v], i) => { const yy = 44 + i * rowH; const r = el("rect", { x: mid, y: yy, width: v * sc, height: rowH - 22, rx: 4, fill: S.s2, class: "bx", style: `--d:${i + 6}` }, s); hover(r, `${w}: ${v} (log₂ ratio)`); txt(s, mid + v * sc + 14, yy + (rowH - 22) / 2 + 7, w, { class: "lab", style: "font-weight:500" }); }); },
+  quartern(h) { barChart(h, { items: [["gin", 44], ["brandy", 15], ["rum", 15], ["whisky", 3]], color: S.s2, max: 55, fmt: (v) => v + "%", W: 640, labelW: 130, rowH: 76, aria: "Next word after a quartern of" }); },
+  pint(h) { barChart(h, { items: [["beer", 49], ["ale", 9], ["porter", 7], ["wine", 6]], color: S.s1, max: 55, fmt: (v) => v + "%", W: 640, labelW: 130, rowH: 76, aria: "Next word after a pint of" }); },
+  arrows(h) { const W = 600, H = 560, ox = 70, oy = 500, R = 470; const s = svgFor(h, W, H); s.setAttribute("aria-label", "Sketch: words as arrows, drinking contexts against theft contexts");
+    el("line", { x1: ox, x2: ox + R + 20, y1: oy, y2: oy, class: "base" }, s); el("line", { x1: ox, x2: ox, y1: oy, y2: oy - R - 20, class: "base" }, s);
+    txt(s, ox + R + 20, oy + 36, "drinking contexts →", { "text-anchor": "end" }); txt(s, ox - 10, oy - R - 30, "theft contexts ↑"); txt(s, ox + R + 20, 24, "sketch", { "text-anchor": "end", style: "font-style:italic" });
+    const defs = el("defs", {}, s);
+    const pts = [["beer", 12, 440, S.s4, 12, -10, 3], ["gin", 6, 110, S.s2, 4, 34, 2], ["pot", 40, 170, S.s5, 10, -10, 4], ["watch", 74, 360, S.s1, 14, 6, 0], ["handkerchief", 86, 450, S.s1, 14, 6, 1]];
+    pts.forEach(([w, deg, len, c, dx, dy, k]) => { const m = el("marker", { id: "m" + w, viewBox: "0 0 10 10", refX: 6, refY: 5, markerWidth: 5, markerHeight: 5, orient: "auto-start-reverse" }, defs); el("path", { d: "M0,0L10,5L0,10z", fill: c }, m);
+      const ex = ox + len * Math.cos(deg * Math.PI / 180), ey = oy - len * Math.sin(deg * Math.PI / 180);
+      const p = el("line", { x1: ox, y1: oy, x2: ex, y2: ey, stroke: c, "stroke-width": 6, "stroke-linecap": "round", "marker-end": `url(#m${w})`, pathLength: 1, class: "draw", style: `--d:${k}` }, s);
+      hover(p, w); txt(s, ex + dx, ey + dy, w, { class: "lab f", style: `--d:${k + 3}; fill:${c === S.s4 ? "#8a6200" : "var(--ink)"}` }); }); },
+  w2v(h) { const W = 1400, H = 430; const s = svgFor(h, W, H); s.setAttribute("aria-label", "CBOW and skip-gram: predicting a word from its context and the context from a word");
+    const ctx = ["stole", "a", "silver", "value", "from"]; txt(s, 0, 24, "CBOW: context → word", { class: "lab", style: `fill:${css("--accent")}` }); txt(s, W, 24, "Skip-gram: word → context", { class: "lab", "text-anchor": "end", style: `fill:${css("--accent")}` });
+    const box = (x, y, w, label, fill, ink, d) => { const g = el("g", { class: "f", style: `--d:${d}` }, s); el("rect", { x, y, width: w, height: 50, rx: 8, fill }, g); txt(g, x + w / 2, y + 33, label, { "text-anchor": "middle", style: `fill:${ink}; font-family:var(--mono); font-size:22px` }); };
+    const cy = 240; ctx.forEach((c, i) => { const y = 60 + i * 72; box(0, y, 160, c, "#DCE3E8", "#17222D", i); el("line", { x1: 160, y1: y + 25, x2: 360, y2: cy, stroke: "#9AA7B1", "stroke-width": 2, pathLength: 1, class: "draw", style: `--d:${1 + i * 0.3}` }, s);
+      box(W - 180, y, 180, c + " ?", "#DCE3E8", "#17222D", 6 + i); el("line", { x1: 1040, y1: cy, x2: W - 180, y2: y + 25, stroke: "#9AA7B1", "stroke-width": 2, pathLength: 1, class: "draw", style: `--d:${3 + i * 0.3}` }, s); });
+    box(360, cy - 25, 180, "watch ?", css("--hot"), "#fff", 5); box(860, cy - 25, 180, "watch", css("--hot"), "#fff", 5); },
+};
+
+// static tables built from data
+function heat() { const e = DATA.ebg; const rows = ["virtue", "effluvia", "fire", "fluid", "spark", "shock", "organ", "current", "resistance", "light", "field", "waves"];
+  const shade = (v) => v >= 50 ? ["#1c5cab", "#fff"] : v >= 20 ? ["#4f86c9", "#fff"] : v >= 8 ? ["#a9c6ea", "#17222D"] : v >= 1 ? ["#dfe8f4", "#17222D"] : ["transparent", "#17222D"];
+  let html = '<table class="heat"><tr><th></th>' + e.map((d) => `<th>${d.period.slice(0, 4)}–${d.period.slice(-2)}</th>`).join("") + "</tr>";
+  rows.forEach((k) => { html += `<tr><td class="w">electric <i>${k}</i></td>` + e.map((d, j) => { const v = d[k], [bg, fg] = shade(v); return `<td class="c" style="--d:${j}; background:${bg}; color:${fg}" title="electric ${k}, ${d.period}: ${v} per million">${v >= 1 ? Math.round(v) : ""}</td>`; }).join("") + "</tr>"; });
+  document.getElementById("heat").innerHTML = html + "</table>"; }
+function matrix() { const cols = ["drank", "pint", "pocket", "stole"], M = [["gin", 21, 21, 1, 0], ["beer", 88, 307, 1, 1], ["pot", 28, 67, 19, 4], ["watch", 1, 1, 185, 36], ["handkerchief", 0, 0, 251, 4]];
+  const shade = (v) => v >= 150 ? ["#1c5cab", "#fff"] : v >= 15 ? ["#a9c6ea", "#17222D"] : ["#EBEFF0", "#6E7A84"];
+  let h = "<tr><th></th>" + cols.map((c) => `<th>${c}</th>`).join("") + "</tr>";
+  M.forEach(([w, ...v], i) => { h += `<tr><td class="w" style="${w === "pot" ? "color:var(--hot)" : ""}">${w}</td>` + v.map((n) => { const [bg, fg] = shade(n); return `<td style="background:${bg}; color:${fg}">${n}</td>`; }).join("") + "</tr>"; });
+  document.getElementById("matrix").innerHTML = h;
+  const ws = ["gin", "beer", "pot", "watch", "handk."];
+  const A = [[1, .87, .9, .04, .03], [.87, 1, .96, .01, 0], [.9, .96, 1, .26, .25], [.04, .01, .26, 1, .98], [.03, 0, .25, .98, 1]];
+  const B = [[1, .86, .62, .22, .15], [.86, 1, .74, .28, .16], [.62, .74, 1, .44, .43], [.22, .28, .44, 1, .56], [.15, .16, .43, .56, 1]];
+  const sh = (v) => v >= .8 ? ["#1c5cab", "#fff"] : v >= .6 ? ["#4f86c9", "#fff"] : v >= .4 ? ["#a9c6ea", "#17222D"] : v >= .2 ? ["#dfe8f4", "#17222D"] : ["#F3F5F6", "#6E7A84"];
+  const grid = (D) => "<tr><th></th>" + ws.map((w) => `<th>${w}</th>`).join("") + "</tr>" + D.map((r, i) => `<tr><td class="w" style="font-size:24px">${ws[i]}</td>` + r.map((v) => { const [bg, fg] = sh(v); return `<td style="background:${bg}; color:${fg}; width:96px; height:54px; font-size:21px">${v.toFixed(2)}</td>`; }).join("") + "</tr>").join("");
+   }
+function cells() { document.querySelectorAll(".cells").forEach((c) => { c.innerHTML = c.dataset.v.split(",").map((t) => { const v = +t, a = Math.min(1, Math.abs(v)); const base = v >= 0 ? [42, 120, 214] : [235, 104, 52]; const m = base.map((x) => Math.round(255 - (255 - x) * (0.15 + 0.85 * a))); return `<i style="background:rgb(${m.join(",")})" title="${v}"></i>`; }).join(""); }); }
+function wordfield() { const f = document.getElementById("wordfield"); const words = ["prisoner", "electric fire", "the watch", "liberty to", "gin", "quartern", "insane", "current", "Bank-note", "virtue", "effluvia", "lunatic", "watchman", "torpedo", "fluid", "a pint of", "waves", "spark"];
+  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  let placed = 0; for (let i = 0; placed < 40 && i < 400; i++) { const X = rnd() * 1480 + 40, Y = rnd() * 840 + 20; if (X < 1180 && Y > 150 && Y < 640) continue; placed++; const sp = document.createElement("span"); sp.textContent = words[i % words.length]; sp.style.left = X + "px"; sp.style.top = Y + "px"; sp.style.fontSize = (14 + rnd() * 18) + "px"; if (i % 9 === 0) sp.className = "hit"; f.appendChild(sp); } }
+
+// ---------- deck engine ----------
+const slides = [...document.querySelectorAll(".slide")];
+let cur = 0, stepIdx = 0; const built = new Set();
+function track(n) { return PARTS.map((p, i) => `<div class="${i + 1 === n ? "cur" : i + 1 < n ? "done" : ""}">${p}</div>`).join(""); }
+document.querySelectorAll(".divider").forEach((d) => { d.querySelector(".track").innerHTML = track(+d.dataset.part); });
+function build(sl) { if (built.has(sl)) return; built.add(sl); sl.querySelectorAll("[data-chart]").forEach((c) => charts[c.dataset.chart](c)); }
+const mini = document.getElementById("mini");
+const IS_PV = location.hash === "#presenter"; let pvWin = null, t0 = Date.now();
+const titleOf = (sl) => { const h = sl.querySelector("h2, h1"); return h ? h.textContent.replace(/\s+/g, " ").trim() : ""; };
+function broadcast() { const msg = { t: "state", i: cur, step: stepIdx };
+  try { if (IS_PV) { if (window.opener) window.opener.postMessage(msg, "*"); } else if (pvWin && !pvWin.closed) pvWin.postMessage(msg, "*"); } catch (e) {} }
+function apply(i, step) { if (i !== cur) show(i, false, true); const steps = [...slides[cur].querySelectorAll(".step")]; stepIdx = Math.max(0, Math.min(step, steps.length)); steps.forEach((x, k) => x.classList.toggle("on", k < stepIdx)); pvUpdate(); }
+function pvUpdate() { if (!IS_PV) return; const sl = slides[cur];
+  document.getElementById("pv-count").textContent = `${cur + 1} / ${slides.length}`;
+  document.getElementById("pv-notes").textContent = sl.dataset.notes || "";
+  const nx = slides[cur + 1]; const steps = sl.querySelectorAll(".step").length;
+  document.getElementById("pv-next").textContent = stepIdx < steps ? `Next click reveals step ${stepIdx + 1} of ${steps} on this slide` : (nx ? `${cur + 2}. ${titleOf(nx)}` : "End of the deck"); }
+window.addEventListener("message", (e) => { const d = e.data || {}; if (d.t === "state") apply(d.i, d.step); else if (d.t === "hello" && !IS_PV) { pvWin = e.source; broadcast(); } });
+function openPresenter() { try { pvWin = window.open(location.href.split("#")[0] + "#presenter", "presenter-view", "width=1280,height=760"); } catch (e) {} setTimeout(broadcast, 800); }
+function show(i, back = false, quiet = false) {
+  i = Math.max(0, Math.min(slides.length - 1, i));
+  slides.forEach((s, k) => { s.classList.toggle("current", k === i); s.classList.toggle("past", k < i); });
+  cur = i; const sl = slides[i]; build(sl); if (i + 1 < slides.length) build(slides[i + 1]);
+  const steps = [...sl.querySelectorAll(".step")]; stepIdx = back ? steps.length : 0; steps.forEach((s, k) => s.classList.toggle("on", k < stepIdx));
+  document.getElementById("count").textContent = `${i + 1} / ${slides.length}`;
+  const part = +sl.dataset.part; const isDark = sl.classList.contains("dark");
+  mini.classList.toggle("hide", isDark || !part);
+  mini.innerHTML = PARTS.map((p, k) => `<span class="${k + 1 === part ? "cur" : k + 1 < part ? "done" : ""}"></span>`).join("") + (part ? `<em>${PARTS[part - 1]}</em>` : "");
+  const n = document.getElementById("notes"); n.textContent = sl.dataset.notes || "";
+  if (!IS_PV) { try { history.replaceState(null, "", "#s" + (i + 1)); } catch (e) {} }
+  pvUpdate(); if (!quiet) broadcast();
+}
+function next() { const steps = [...slides[cur].querySelectorAll(".step")]; if (stepIdx < steps.length) { steps[stepIdx++].classList.add("on"); pvUpdate(); broadcast(); return; } show(cur + 1); }
+function prev() { const steps = [...slides[cur].querySelectorAll(".step")]; if (stepIdx > 0) { steps[--stepIdx].classList.remove("on"); pvUpdate(); broadcast(); return; } show(cur - 1, true); }
+function fitStage() { const st = document.getElementById("stage"); const v = document.getElementById("viewport"); const k = Math.min(v.clientWidth / 1600, v.clientHeight / 900) * 0.985; st.style.transform = `translate(-50%, -50%) scale(${k})`; }
+window.addEventListener("resize", fitStage);
+document.addEventListener("keydown", (e) => {
+  if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") show(0); else if (e.key === "End") show(slides.length - 1);
+  else if (e.key === "n" || e.key === "N") toggleNotes(); else if (e.key === "f" || e.key === "F") toggleFull(); else if ((e.key === "p" || e.key === "P") && !IS_PV) openPresenter();
+});
+document.getElementById("viewport").addEventListener("click", (e) => { if (e.target.closest("a, button")) return; (e.clientX > window.innerWidth * 0.3 ? next : prev)(); });
+let tx = null; document.addEventListener("touchstart", (e) => { tx = e.touches[0].clientX; }, { passive: true });
+document.addEventListener("touchend", (e) => { if (tx === null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 40) (dx < 0 ? next : prev)(); tx = null; });
+function toggleNotes() { const n = document.getElementById("notes"); n.hidden = !n.hidden; }
+function toggleFull() { try { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); else document.exitFullscreen().catch(() => {}); } catch (e) {} }
+document.getElementById("bn").onclick = (e) => { e.stopPropagation(); toggleNotes(); };
+document.getElementById("bpv").onclick = (e) => { e.stopPropagation(); openPresenter(); };
+document.getElementById("pv-prev").onclick = () => prev(); document.getElementById("pv-nextb").onclick = () => next();
+document.getElementById("pv-reset").onclick = () => { t0 = Date.now(); };
+if (IS_PV) { document.body.classList.add("pv"); document.getElementById("presenter").hidden = false; document.title = "Presenter · " + document.title;
+  setInterval(() => { const s2 = Math.floor((Date.now() - t0) / 1000); document.getElementById("pv-time").textContent = `${Math.floor(s2 / 60)}:${String(s2 % 60).padStart(2, "0")}`; }, 1000);
+  try { if (window.opener) window.opener.postMessage({ t: "hello" }, "*"); } catch (e) {} }
+document.getElementById("bf").onclick = (e) => { e.stopPropagation(); toggleFull(); };
+document.getElementById("bp").onclick = (e) => { e.stopPropagation(); prev(); };
+document.getElementById("bx").onclick = (e) => { e.stopPropagation(); next(); };
+window.addEventListener("hashchange", () => { if (IS_PV) return; const m = location.hash.match(/^#s(\d+)$/); if (m && +m[1] - 1 !== cur) show(+m[1] - 1); });
+setTimeout(() => { document.getElementById("help").style.opacity = 0; }, 5000);
+heat(); matrix(); wordfield(); cells(); fitStage();
+const m0 = location.hash.match(/^#s(\d+)$/); show(m0 ? +m0[1] - 1 : 0, false, IS_PV); fitStage();
+</script>
+
+</html>
