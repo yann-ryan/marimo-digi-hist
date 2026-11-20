@@ -366,7 +366,7 @@ def _(pl, trial_word_counts, trials):
 
 
 @app.cell
-def _(alt, decade_totals, decade_word_counts, pl, re, trend_words, trials):
+def _(alt, decade_totals, decade_word_counts, pl, re, trend_words, trials, trial_word_counts):
     _terms = [" ".join(re.findall(r"[a-z]+", t.lower())) for t in trend_words.value.split(",")]
     _words = [t for t in _terms if t and " " not in t]
     _phrases = [t for t in _terms if " " in t]
@@ -377,13 +377,19 @@ def _(alt, decade_totals, decade_word_counts, pl, re, trend_words, trials):
         .join(decade_word_counts, on=["decade", "word"], how="left")
         .select("decade", "total", "word", pl.col("count").cast(pl.Int64))
     ]
-    # phrases (n-grams): search the text, ignoring case and allowing any punctuation between the words
+    # phrases (n-grams): search for them in the text, with punctuation turned into spaces
     if _phrases:
-        _clean = trials.select("decade", pl.col("text").alias("t"))
+        _clean = trials.select("trial_id", "decade", pl.col("text").alias("t"))
         for _p in _phrases:
+            # only the texts containing the phrase's first word can match
+            _with = trial_word_counts.filter(pl.col("word") == _p.split()[0]).select("trial_id")
             _parts.append(
-                _clean.group_by("decade")
-                .agg(pl.col("t").str.count_matches(r"(?i)\b" + _p.replace(" ", r"[^a-z]+") + r"\b").sum().cast(pl.Int64).alias("count"))
+                _clean.join(_with, on="trial_id", how="semi")
+                .select("decade", pl.col("t").str.to_lowercase().str.replace_all(r"[^a-z]+", " "))
+                .group_by("decade")
+                .agg(pl.col("t").str.count_matches(rf"\b{_p}\b").sum().cast(pl.Int64).alias("count"))
+                .join(decade_totals.select("decade"), on="decade", how="right")
+                .with_columns(pl.col("count").fill_null(0))
                 .join(decade_totals, on="decade")
                 .select("decade", "total", pl.lit(_p).alias("word"), "count")
             )
@@ -565,18 +571,21 @@ def _(pl, trial_word_counts, trials):
 
 
 @app.cell
-def _(mo, next_phrase, pl, re, trials):
+def _(mo, next_phrase, pl, re, trials, trial_word_counts):
     # several variants can be given, separated by commas ("electric, electrical"): they are counted together
     _variants = [re.findall(r"[a-z]+", v.lower()) for v in next_phrase.value.split(",")]
     _variants = [v for v in _variants if v]
     mo.stop(not _variants, mo.md("Type one or more words above."))
-    # the words of each variant, with anything that is not a letter in between, then one more word
-    _pattern = r"(?i)\b(?:" + "|".join(r"[^a-z]+".join(v) for v in _variants) + r")[^a-z]+([a-z]+)"
+    # only the texts that contain the first word of a variant can match (much less text to search)
+    _ids = trial_word_counts.filter(pl.col("word").is_in([v[0] for v in _variants])).select("trial_id").unique()
+    _pattern = r"\b(?:" + "|".join(" ".join(v) for v in _variants) + r") ([a-z]+)"
     next_found = (
-        trials.select("trial_id", "year", pl.col("text").str.extract_all(_pattern).alias("m"))
+        trials.join(_ids, on="trial_id", how="semi")
+        .select("trial_id", "year", pl.col("text").str.to_lowercase().str.replace_all(r"[^a-z]+", " ").alias("t"))
+        .select("trial_id", "year", pl.col("t").str.extract_all(_pattern).alias("m"))
         .explode("m")
         .drop_nulls("m")
-        .select("trial_id", "year", pl.col("m").str.extract(r"(?i)([a-z]+)$", 1).str.to_lowercase().alias("next_word"))
+        .select("trial_id", "year", pl.col("m").str.extract(r"([a-z]+)$", 1).alias("next_word"))
     )
     return (next_found,)
 
