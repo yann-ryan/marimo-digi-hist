@@ -377,13 +377,13 @@ def _(alt, decade_totals, decade_word_counts, pl, re, trend_words, trials):
         .join(decade_word_counts, on=["decade", "word"], how="left")
         .select("decade", "total", "word", pl.col("count").cast(pl.Int64))
     ]
-    # phrases (n-grams): search for them in the text, with punctuation turned into spaces
+    # phrases (n-grams): search the text, ignoring case and allowing any punctuation between the words
     if _phrases:
-        _clean = trials.select("decade", pl.col("text").str.to_lowercase().str.replace_all(r"[^a-z]+", " ").alias("t"))
+        _clean = trials.select("decade", pl.col("text").alias("t"))
         for _p in _phrases:
             _parts.append(
                 _clean.group_by("decade")
-                .agg(pl.col("t").str.count_matches(rf"\b{_p}\b").sum().cast(pl.Int64).alias("count"))
+                .agg(pl.col("t").str.count_matches(r"(?i)\b" + _p.replace(" ", r"[^a-z]+") + r"\b").sum().cast(pl.Int64).alias("count"))
                 .join(decade_totals, on="decade")
                 .select("decade", "total", pl.lit(_p).alias("word"), "count")
             )
@@ -556,28 +556,39 @@ def _(mo):
 
 
 @app.cell
-def _(mo, next_phrase, next_show, next_split, pl, re, trials):
+def _(pl, trial_word_counts, trials):
+    # words per text, worked out once, to turn counts into "per million words" later
+    words_per_text = (
+        trial_word_counts.group_by("trial_id").agg(pl.col("count").sum().alias("words")).join(trials.select("trial_id", "year"), on="trial_id")
+    )
+    return (words_per_text,)
+
+
+@app.cell
+def _(mo, next_phrase, pl, re, trials):
     # several variants can be given, separated by commas ("electric, electrical"): they are counted together
-    _variants = [" ".join(re.findall(r"[a-z]+", v.lower())) for v in next_phrase.value.split(",")]
+    _variants = [re.findall(r"[a-z]+", v.lower()) for v in next_phrase.value.split(",")]
     _variants = [v for v in _variants if v]
     mo.stop(not _variants, mo.md("Type one or more words above."))
-    _step = next_split.value
-    _start = (pl.col("year") // max(_step, 1)) * _step
-    _period = pl.lit("all years") if _step == 0 else pl.format("{}–{}", _start, _start + _step - 1)
-    _clean = trials.select(
-        _period.alias("period"), pl.col("text").str.to_lowercase().str.replace_all(r"[^a-z]+", " ").alias("t")
-    )
-    # how many words each period has, to turn counts into "per million words"
-    _words = _clean.group_by("period").agg(pl.col("t").str.count_matches(r"[a-z]+").sum().alias("words"))
-    # every occurrence of the words, plus the one word that follows; keep that last word
-    _found = (
-        _clean.select("period", pl.col("t").str.extract_all(r"\b(?:" + "|".join(_variants) + r") [a-z]+").alias("m"))
+    # the words of each variant, with anything that is not a letter in between, then one more word
+    _pattern = r"(?i)\b(?:" + "|".join(r"[^a-z]+".join(v) for v in _variants) + r")[^a-z]+([a-z]+)"
+    next_found = (
+        trials.select("trial_id", "year", pl.col("text").str.extract_all(_pattern).alias("m"))
         .explode("m")
         .drop_nulls("m")
-        .select("period", pl.col("m").str.extract(r"([a-z]+)$", 1).alias("next_word"))
+        .select("trial_id", "year", pl.col("m").str.extract(r"(?i)([a-z]+)$", 1).str.to_lowercase().alias("next_word"))
     )
-    mo.stop(_found.height == 0, mo.md(f"*{next_phrase.value}* does not occur in the sample.").callout(kind="warn"))
-    _counts = _found.group_by("period", "next_word").agg(pl.len().alias("count"))
+    return (next_found,)
+
+
+@app.cell
+def _(mo, next_found, next_phrase, next_show, next_split, pl, words_per_text):
+    mo.stop(next_found.height == 0, mo.md(f"*{next_phrase.value}* does not occur in the sample.").callout(kind="warn"))
+    _step = next_split.value
+    _start = (pl.col("year") // max(_step, 1)) * _step
+    _period = (pl.lit("all years") if _step == 0 else pl.format("{}–{}", _start, _start + _step - 1)).alias("period")
+    _words = words_per_text.group_by(_period).agg(pl.col("words").sum())
+    _counts = next_found.group_by(_period, "next_word").agg(pl.len().alias("count"))
     _per_period = _counts.group_by("period").agg(pl.col("count").sum().alias("all_next"))
     _counts = (
         _counts.join(_per_period, on="period")
@@ -587,19 +598,20 @@ def _(mo, next_phrase, next_show, next_split, pl, re, trials):
             (pl.col("count") / pl.col("words") * 1_000_000).round(1).alias("per_million"),
         )
     )
-    _top = _found.group_by("next_word").agg(pl.len().alias("times")).sort("times", descending=True).head(15)
+    _top = next_found.group_by("next_word").agg(pl.len().alias("times")).sort("times", descending=True).head(15)
     next_table = (
         _counts.join(_top, on="next_word")
         .pivot(on="period", index=["next_word", "times"], values=next_show.value, sort_columns=True)
         .fill_null(0)
         .sort("times", descending=True)
     )
+    _what = "share of what follows (%)" if next_show.value == "share" else "occurrences per million words"
     mo.vstack(
         [
             mo.md(
-                f"*{next_phrase.value}* occurs **{_found.height:,}** times in the sample, followed by "
-                f"{_found['next_word'].n_unique():,} different words. The 15 most common, with their "
-                f"{'share of what follows (%)' if next_show.value == 'share' else 'occurrences per million words'} in each period (*times* = number of occurrences in all periods):"
+                f"*{next_phrase.value}* occurs **{next_found.height:,}** times in the sample, followed by "
+                f"{next_found['next_word'].n_unique():,} different words. The 15 most common, with their "
+                f"{_what} in each period (*times* = number of occurrences in all periods):"
             ),
             mo.ui.table(next_table, selection=None, page_size=15, show_column_summaries=False),
         ]
