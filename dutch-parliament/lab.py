@@ -441,21 +441,32 @@ def _(mo, pl, text_word_counts, texts, word_counts):
             ).callout(kind="warn"),
         )
 
-    MAX_TEXTS = 1_000
+    MAX_WORDS = 1_000_000
 
     def tokens_of_texts_with(word, years=None):
         """All the words, in order, of the texts that contain `word` (optionally only between two years).
 
-        To keep things quick in the browser, at most MAX_TEXTS texts (a random selection) are used.
+        To keep things quick in the browser, the texts are a random selection of at most about
+        MAX_WORDS words in all (the texts are long, so this is often a few hundred texts).
         Returns the words and a short note saying how many texts were used.
         """
         ids = text_word_counts.filter(pl.col("word") == word).select("speech_id")
         if years:
             ids = ids.join(texts.filter(pl.col("year").is_between(*years)).select("speech_id"), on="speech_id", how="semi")
         note = f"Based on all {ids.height:,} texts that contain *{word}*."
-        if ids.height > MAX_TEXTS:
-            note = f"Based on a random {MAX_TEXTS:,} of the {ids.height:,} texts that contain *{word}*."
-            ids = ids.sample(MAX_TEXTS, seed=1814)
+        # shuffle the texts, then keep them until the word budget is used up
+        _sized = (
+            ids.sample(fraction=1.0, shuffle=True, seed=1814)
+            .join(texts.select("speech_id", "n_words"), on="speech_id", how="left")
+            .with_columns(pl.col("n_words").cum_sum().alias("running"))
+        )
+        _kept = _sized.filter((pl.col("running") <= MAX_WORDS) | (pl.int_range(pl.len()) == 0))
+        if _kept.height < ids.height:
+            note = (
+                f"Based on a random {_kept.height:,} of the {ids.height:,} texts that contain *{word}* "
+                f"(about {MAX_WORDS:,} words, to keep the browser version quick)."
+            )
+            ids = _kept.select("speech_id")
         tokens = (
             texts.select("speech_id", "text")
             .join(ids, on="speech_id", how="semi")

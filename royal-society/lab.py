@@ -440,21 +440,32 @@ def _(mo, pl, text_word_counts, texts, word_counts):
             ).callout(kind="warn"),
         )
 
-    MAX_TEXTS = 1_000
+    MAX_WORDS = 1_000_000
 
     def tokens_of_texts_with(word, years=None):
         """All the words, in order, of the texts that contain `word` (optionally only between two years).
 
-        To keep things quick in the browser, at most MAX_TEXTS texts (a random selection) are used.
+        To keep things quick in the browser, the texts are a random selection of at most about
+        MAX_WORDS words in all (the texts are long, so this is often a few hundred texts).
         Returns the words and a short note saying how many texts were used.
         """
         ids = text_word_counts.filter(pl.col("word") == word).select("text_id")
         if years:
             ids = ids.join(texts.filter(pl.col("year").is_between(*years)).select("text_id"), on="text_id", how="semi")
         note = f"Based on all {ids.height:,} texts that contain *{word}*."
-        if ids.height > MAX_TEXTS:
-            note = f"Based on a random {MAX_TEXTS:,} of the {ids.height:,} texts that contain *{word}*."
-            ids = ids.sample(MAX_TEXTS, seed=1665)
+        # shuffle the texts, then keep them until the word budget is used up
+        _sized = (
+            ids.sample(fraction=1.0, shuffle=True, seed=1665)
+            .join(texts.select("text_id", "n_words"), on="text_id", how="left")
+            .with_columns(pl.col("n_words").cum_sum().alias("running"))
+        )
+        _kept = _sized.filter((pl.col("running") <= MAX_WORDS) | (pl.int_range(pl.len()) == 0))
+        if _kept.height < ids.height:
+            note = (
+                f"Based on a random {_kept.height:,} of the {ids.height:,} texts that contain *{word}* "
+                f"(about {MAX_WORDS:,} words, to keep the browser version quick)."
+            )
+            ids = _kept.select("text_id")
         tokens = (
             texts.select("text_id", "text")
             .join(ids, on="text_id", how="semi")
@@ -831,24 +842,32 @@ def _(alt, group_lists, group_targets, mo, pl, re, text_word_counts, texts):
     mo.stop(not _targets or not _group_of, mo.md("Type target words and at least one group.").callout(kind="warn"))
 
     _ids = text_word_counts.filter(pl.col("word").is_in(_targets)).select("text_id").unique()
+    # (kept small for the browser: only the target and group words, with their position in the text)
+    _keep = _targets + list(_group_of)
     _tokens = (
         texts.join(_ids, on="text_id", how="semi")
-        .select("text_id", "year", pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("word"))
-        .explode("word")
+        .lazy()
+        .select("text_id", "year", pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("w"))
+        .select(
+            "text_id",
+            "year",
+            pl.col("w").list.eval(pl.element().filter(pl.element().is_in(_keep))).alias("word"),
+            pl.col("w").list.eval(pl.arg_where(pl.element().is_in(_keep))).alias("position"),
+        )
+        .explode("word", "position")
         .drop_nulls("word")
-        .with_row_index("position")
         .with_columns(pl.col("position").cast(pl.Int64))
+        .collect()
     )
     _hits = _tokens.filter(pl.col("word").is_in(_targets)).with_columns(
         pl.format("{}–{}", (pl.col("year") // 25) * 25, (pl.col("year") // 25) * 25 + 24).alias("period")
     )
     _groups = pl.DataFrame({"word": list(_group_of), "group": list(_group_of.values())})
+    # group words within 5 words of each occurrence, in the same text
     _nearby = (
-        _hits.select("text_id", "position", "period")
-        .join(pl.DataFrame({"offset": [k for k in range(-5, 6) if k != 0]}), how="cross")
-        .select("text_id", "period", (pl.col("position") + pl.col("offset")).alias("position"))
-        .join(_tokens.select("text_id", "position", "word"), on=["text_id", "position"])
-        .join(_groups, on="word")
+        _hits.select("text_id", pl.col("position").alias("p"), "period")
+        .join(_tokens.select("text_id", pl.col("position").alias("q"), "word").join(_groups, on="word"), on="text_id")
+        .filter(((pl.col("p") - pl.col("q")).abs() <= 5) & (pl.col("p") != pl.col("q")))
     )
     _n = _hits.group_by("period").agg(pl.len().alias("occurrences")).filter(pl.col("occurrences") >= 20)
     group_shares = (
