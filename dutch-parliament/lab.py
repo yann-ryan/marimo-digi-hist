@@ -63,18 +63,70 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-    **How this notebook works.** A marimo notebook is made of *cells*. Some contain text (like
-    this one), some contain Python code, and code cells show their result *above* the code.
-    marimo is **reactive**: when you change something, every cell that depends on it re-runs
-    automatically. You never have to remember which cells to re-run.
+    mo.md(r"""
+    **Start here: press ▶ Run all.** The button is at the bottom right of the screen. The first
+    run takes a minute or two, because your browser has to download Python and the data. Wait
+    until the cells have finished running (they stop being greyed out) before you begin.
+    """).callout(kind="warn")
+    return
 
-    Cells marked **✏️ Your turn** are the ones you are meant to edit. Click into the code, change
-    it, and press `Ctrl/Cmd + Enter` (or the ▶ button) to run it. If you break something, press
-    `Ctrl/Cmd + Z` to undo.
-    """
-    ).callout(kind="info")
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Aims
+
+    By the end of this lab you should be able to:
+
+    - explain how a computer turns a text into countable "words", and why each choice in that
+      process (lower-casing, stopwords) changes the results;
+    - measure how often a word or phrase occurs over time, and say why the counts have to be
+      relative (per 10,000 words) rather than raw;
+    - use keyword-in-context to check what a count is really counting;
+    - find the words that keep company with a word (collocations) and the words that are
+      typical of one group of speeches;
+    - use word embeddings to explore what a word means in the *Handelingen*, and how that changes;
+    - judge whether a result shows something that happened, a change in meaning, or a change in
+      the source.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## How this notebook works
+
+    **Cells.** The notebook is made of *cells*. Some hold text, like this one. Others hold Python
+    code and show their result (a table, a chart, a sentence) *above* the code. marimo is
+    **reactive**: when you change something, every cell that depends on it re-runs by itself, so
+    you never have to remember what to re-run.
+
+    **Hiding the code.** Most of the code is already hidden. To hide all of it, so that the
+    notebook looks like a simple app, click the **app view** button on the right of the screen
+    (or press `Ctrl/Cmd + .`). Press it again to go back. App view is the easiest way to work
+    through most of the lab, but you cannot edit code in it.
+
+    **Two kinds of task.**
+
+    - ✏️ **Your turn**: try something with the sliders, text boxes and dropdowns. You do not
+      need to touch the code.
+    - 🔧 **Edit the code**: at a few points the boxes are not enough, and you change the Python
+      itself. Leave app view first. If the code is hidden, hover over the cell, open its **⋯**
+      menu and choose **Show code**. Make the change, then press `Ctrl/Cmd + Enter` (or the ▶
+      button of that cell) to run it. If you break something, `Ctrl/Cmd + Z` undoes it. There
+      are three of these: the chart of speeches by role (Part 1), the tokenising cell and the stopword list (both Part 2).
+
+    **Be patient.** Some cells take a few seconds to process, especially the word counts, the
+    n-grams, the collocations and loading the embedding models. A cell that is still running is
+    greyed out. Wait for it to finish rather than clicking again.
+
+    **Your changes are not saved.** If you reload the page, the notebook goes back to the start.
+    Copy anything you want to keep (words, numbers, screenshots) into your own notes.
+
+    **Discussion.** There are three short 🗣️ **plenaries** in the lab. When you reach one, stop,
+    compare what you found with your neighbours, and then we discuss it together as a class.
+    """).callout(kind="info")
     return
 
 
@@ -236,12 +288,28 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    🔧 **Edit the code.** The chart above splits the speeches by the speaker's *role*. Click into
+    the code of the chart cell and replace `role` with `chamber` in the three places where it is
+    in quotes, then press
+    `Ctrl/Cmd + Enter`. How do the Tweede Kamer and the Eerste Kamer compare? (You can also try
+    `"party"`, but the chart gets very crowded.)
+    """).callout(kind="neutral")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ---
     ## Part 2 · Frequency: how often?
 
     To count words, the computer first has to decide what a "word" is. Our rule is very simple:
     **lower-case everything, and treat every run of letters a–z as a word.** This is called
     *tokenisation*.
+
+    🔧 **Edit the code.** The next cell has no boxes to fill in: change the sentence in the code
+    itself and press `Ctrl/Cmd + Enter` to run it. (In app view you will only see the result, so
+    switch back first.)
     """)
     return
 
@@ -295,7 +363,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _():
+def _(mo):
     STOPWORDS = set(
         """de het een en van in is dat op te die met voor zijn niet aan er om ook als dan maar bij of door
         over tot uit ze zij hij ik wij we u mij me hem haar ons hun wat was werd worden wordt zal zou kan
@@ -303,6 +371,7 @@ def _():
         onder tegen na nu toen want omdat dus zich men den der des eene eener zijne hare welke welk
         hetwelk dien dezen doch reeds zeer alle andere ben bent wil waar hoe wie ten ter mijn uw niets iets alleen""".split()
     )
+    mo.md(f"🔧 *The stopword list ({len(STOPWORDS)} words) is in this cell. Show its code to edit it.*")
     return (STOPWORDS,)
 
 
@@ -337,6 +406,12 @@ def _(mo):
     document* this is? Look out for OCR errors and single letters (from *'t*, *'n* and broken
     words), old spellings such as *zoo* and *mensch*, and French: until the mid-nineteenth century
     some members spoke French in the Chamber.
+
+    🔧 **Edit the code.** The stopword list is in the hidden cell just above the switch (the one
+    that says *The stopword list is in this cell*). Show its code (hover over it, open its **⋯**
+    menu, choose **Show code**), add `voorzitter heer minister` to the list and run
+    the cell. Switch *Remove stopwords* on: what appears in the top list now? The collocations
+    in Part 3 use the same list, so your change carries through.
 
     ### Words over time
 
@@ -701,6 +776,26 @@ def _(kwic_n, kwic_word, mo, pl, random, re, texts):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### 🗣️ Plenary 1 (about 5 minutes)
+
+    You have counted words, followed them over time, and read them in context. Before the class
+    discussion, show your neighbours **one trend line** you made and say what you think it
+    shows. Then look at it together:
+
+    - Did something *happen* (a war, a new law, a crisis)?
+    - Did the *meaning* of the word change?
+    - Or did the *source* change (shorter speeches, a spelling reform: *zoo* became *zo*)?
+
+    What did keyword in context add that the chart could not show?
+
+    *Got here early?* Try `de minister van` in *What comes next?*, and see how the ministries change over time.
+    """).callout(kind="success")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ---
     ## Part 3 · Association: in what company?
 
@@ -998,6 +1093,24 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### 🗣️ Plenary 2 (about 5 minutes)
+
+    Pick **one collocation or one distinctive word** that surprised you: a word that keeps
+    company with *vrijheid* or *oorlog*, or a word that is typical of ministers, or of one party.
+    Explain it to your neighbours. Then ask:
+
+    - Is it about politics, or about how parliament speaks (forms of address, procedure)?
+    - Would the result change with a different window, period or minimum count?
+    - What is lost when we compare whole groups of speeches rather than reading them?
+
+    *Got here early?* Try the TF-IDF section, if you have not done so yet: compare the 1930s with the 1950s.
+    """).callout(kind="success")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ---
     ## Part 4 · Embeddings: what does a word mean? (word2vec)
 
@@ -1229,6 +1342,24 @@ def _(alt, map_period, map_words, models, np, pl):
     )
     _missing = sorted(set(_words) - set(_known))
     _chart if not _missing else alt.vconcat(_chart, title=f"Not in the model: {', '.join(_missing)}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 🗣️ Plenary 3 (about 5 minutes)
+
+    Share **one word whose nearest neighbours differ** between the two models (for example
+    *burgers* or *gemeenschap*), or one analogy that worked, or failed badly. With your
+    neighbours, discuss:
+
+    - What has the model learned: the meaning of the word, or the debates in which it was used?
+    - Which neighbours would you not have found by counting alone?
+    - What would you need to read to check what the model tells you?
+
+    *Got here early?* Put ten words of your own on the map of words, and see which groups form.
+    """).callout(kind="success")
     return
 
 

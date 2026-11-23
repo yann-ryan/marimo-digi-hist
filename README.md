@@ -44,6 +44,14 @@ build/                         scratch: trained gensim models, logs (not needed 
 | 92–100 | 5 · Pitfalls | *liberty to* in KWIC (permission, not liberty); *q* over time (the source changes); read the trials behind a peak |
 | 100–105 | Wrap-up | one word, three questions, short plenary |
 
+**2026-11-23 additions (all three labs):** a "Start here: press ▶ Run all" callout, an Aims
+section and a longer "How this notebook works" (app view button / `Ctrl/Cmd + .`, ✏️ *Your turn*
+= boxes only vs 🔧 *Edit the code*, waiting for slow cells, edits lost on reload). Three 🔧 code
+edits: the Part 1 source chart (OB `.median()`→`.max()`/`.mean()`; RSC `stack="normalize"`→`True`;
+Dutch `role`→`chamber`), the tokenising cell, and the stopword list (its hidden cell now prints a
+line so students can find it). Three 🗣️ plenaries (~5 min each) at the end of Parts 2, 3 and 4,
+each with a "got here early?" task. They add ~15 minutes to the timings above.
+
 The three notebooks were lined up with lecture v6 on 2026-11-20: part titles follow the lecture's
 methods (frequency, association, embeddings), and each lab gained the next-word table, the TF-IDF
 side-by-side view and a Pitfalls part. The Royal Society lab also has the lecture's electricity
