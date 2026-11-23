@@ -650,8 +650,17 @@ def _(mo, next_phrase, pl, re, trials, trial_word_counts):
     _variants = [re.findall(r"[a-z]+", v.lower()) for v in next_phrase.value.split(",")]
     _variants = [v for v in _variants if v]
     mo.stop(not _variants, mo.md("Type one or more words above."))
-    # only the texts that contain the first word of a variant can match (much less text to search)
-    _ids = trial_word_counts.filter(pl.col("word").is_in([v[0] for v in _variants])).select("trial_id").unique()
+    # only the texts that contain every word of a variant can match (much less text to search)
+    _ids = pl.concat(
+        [
+            trial_word_counts.filter(pl.col("word").is_in(list(set(v))))
+            .group_by("trial_id")
+            .agg(pl.len().alias("n"))
+            .filter(pl.col("n") == len(set(v)))
+            .select("trial_id")
+            for v in _variants
+        ]
+    ).unique()
     _pattern = r"\b(?:" + "|".join(" ".join(v) for v in _variants) + r") ([a-z]+)"
     next_found = (
         trials.join(_ids, on="trial_id", how="semi")

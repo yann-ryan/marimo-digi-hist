@@ -663,8 +663,17 @@ def _(mo, next_phrase, pl, re, texts, text_word_counts):
     _variants = [re.findall(r"[a-z]+", v.lower()) for v in next_phrase.value.split(",")]
     _variants = [v for v in _variants if v]
     mo.stop(not _variants, mo.md("Type one or more words above."))
-    # only the texts that contain the first word of a variant can match (much less text to search)
-    _ids = text_word_counts.filter(pl.col("word").is_in([v[0] for v in _variants])).select("text_id").unique()
+    # only the texts that contain every word of a variant can match (much less text to search)
+    _ids = pl.concat(
+        [
+            text_word_counts.filter(pl.col("word").is_in(list(set(v))))
+            .group_by("text_id")
+            .agg(pl.len().alias("n"))
+            .filter(pl.col("n") == len(set(v)))
+            .select("text_id")
+            for v in _variants
+        ]
+    ).unique()
     _pattern = r"\b(?:" + "|".join(" ".join(v) for v in _variants) + r") ([a-z]+)"
     next_found = (
         texts.join(_ids, on="text_id", how="semi")
