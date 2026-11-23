@@ -1357,6 +1357,136 @@ def _(alt, map_period, map_words, models, np, pl):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Semantic shift: which words moved?
+
+    The two models were trained separately, so their numbers cannot be compared directly: the
+    first of the 100 numbers in one model has nothing to do with the first number in the other.
+    To compare them, we first **align** the two models. We rotate the earlier model so that the
+    10,000 most frequent words known to both models line up as closely as possible with their
+    positions in the later model. Most words keep roughly the same company, so they end up in
+    roughly the same place. A word that is still far from its old position after the rotation has
+    changed its company: a sign (no more) of a change in meaning. This is the method of Hamilton,
+    Leskovec and Jurafsky, *Diachronic Word Embeddings Reveal Statistical Laws of Semantic
+    Change* (2016).
+
+    For one word you see its similarity to itself across the two periods (1 = no change), its
+    neighbours in each period, and which later words now sit where the word used to be.
+    """)
+    return
+
+
+@app.cell
+def _(models, np):
+    # Align the earlier model to the later one (orthogonal Procrustes), using the 10,000
+    # most frequent words that both models know (the models list words by frequency).
+    _early, _late = models["1814-1917"], models["1918-2012"]
+    shared_words = [w for w in _early["words"] if w in _late["index"]][:10_000]
+    _A = _early["vectors"][[_early["index"][w] for w in shared_words]]
+    _B = _late["vectors"][[_late["index"][w] for w in shared_words]]
+    _U, _, _Vt = np.linalg.svd(_A.T @ _B)
+    early_aligned = _early["vectors"] @ (_U @ _Vt)
+    # how similar each shared word is to itself in the other period (1 = no change)
+    self_similarity = (early_aligned[[_early["index"][w] for w in shared_words]] * _B).sum(axis=1)
+    return early_aligned, self_similarity, shared_words
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    shift_word = mo.ui.text(value="gemeenschap", label="Word:")
+    shift_word
+    return (shift_word,)
+
+
+@app.cell(hide_code=True)
+def _(early_aligned, mo, models, np, pl, self_similarity, shift_word):
+    def _nearest(model, vector, word, n=10):
+        _sim = model["vectors"] @ vector
+        _best = [i for i in np.argsort(-_sim)[: n + 1] if model["words"][i] != word][:n]
+        return pl.DataFrame({"word": [model["words"][i] for i in _best], "similarity": _sim[_best].astype(float).round(2)})
+
+    _w = shift_word.value.strip().lower()
+    _early, _late = models["1814-1917"], models["1918-2012"]
+    if _w not in _early["index"] or _w not in _late["index"]:
+        _out = mo.md(f"*{_w}* is not in both models. Try another word.").callout(kind="warn")
+    else:
+        _old = early_aligned[_early["index"][_w]]
+        _self = float(_old @ _late["vectors"][_late["index"][_w]])
+        _less = float((self_similarity > _self).mean() * 100)
+        _table = lambda df: mo.ui.table(df, selection=None, page_size=10, show_column_summaries=False)
+        _out = mo.vstack(
+            [
+                mo.md(
+                    f"Similarity of *{_w}* in 1814–1917 to *{_w}* in 1918–2012: **{_self:.2f}**. "
+                    f"{_less:.0f}% of the 10,000 most frequent shared words changed less."
+                ),
+                mo.hstack(
+                    [
+                        mo.vstack([mo.md("**Neighbours 1814–1917**"), _table(_nearest(_early, _early["vectors"][_early["index"][_w]], _w))]),
+                        mo.vstack([mo.md("**Neighbours 1918–2012**"), _table(_nearest(_late, _late["vectors"][_late["index"][_w]], _w))]),
+                        mo.vstack([mo.md("**1918–2012 words where it used to be**"), _table(_nearest(_late, _old, _w))]),
+                    ],
+                    widths="equal",
+                    gap=1,
+                ),
+            ]
+        )
+    _out
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    **Which words moved most?** The table lists the words whose position changed most, among the
+    most frequent words known to both models. Rare words move a lot by chance, so use the slider
+    to include more or fewer words.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    shift_top = mo.ui.slider(start=1000, stop=10000, step=1000, value=5000, label="Only the most frequent", show_value=True)
+    shift_top
+    return (shift_top,)
+
+
+@app.cell(hide_code=True)
+def _(mo, models, np, pl, self_similarity, shared_words, shift_top):
+    def _top5(model, word):
+        _sim = model["vectors"] @ model["vectors"][model["index"][word]]
+        return ", ".join(model["words"][i] for i in np.argsort(-_sim)[1:6])
+
+    _order = np.argsort(self_similarity[: shift_top.value])[:25]
+    most_moved = pl.DataFrame(
+        {
+            "word": [shared_words[i] for i in _order],
+            "similarity": self_similarity[_order].astype(float).round(2),
+            "neighbours 1814–1917": [_top5(models["1814-1917"], shared_words[i]) for i in _order],
+            "neighbours 1918–2012": [_top5(models["1918-2012"], shared_words[i]) for i in _order],
+        }
+    )
+    mo.ui.table(most_moved, selection=None, page_size=25, show_column_summaries=False)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Try `afstemming` (voting on a bill, later coordination between policies), `fractie`,
+    `cultuur` (from coffee and sugar cultivation in Java to culture and recreation), `ras`, `effecten`
+    (from bonds to effects), `burgers`, `arbeiders` (which hardly moves). Then look at the list of
+    words that moved most: which of them changed meaning, and which only show that the
+    *Handelingen* changed (OCR, spelling, new names)?
+
+    Watch out for OCR fragments (*kou*, *ind*), surnames, and French: they move because the source changed, not the language.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### 🗣️ Plenary 3 (about 5 minutes)
 
     Share **one word whose nearest neighbours differ** between the two models (for example
@@ -1366,6 +1496,8 @@ def _(mo):
     - What has the model learned: the meaning of the word, or the debates in which it was used?
     - Which neighbours would you not have found by counting alone?
     - What would you need to read to check what the model tells you?
+    - In the list of words that moved most, which shifts are real changes of meaning, and
+      which come from names, spelling or OCR?
 
     *Got here early?* Put ten words of your own on the map of words, and see which groups form.
     """).callout(kind="success")

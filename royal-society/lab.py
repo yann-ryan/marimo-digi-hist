@@ -926,107 +926,6 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""
-    ### Grouping collocates: words near *electricity*
-
-    The lecture's chart: every word within 5 words of *electric*, *electrical* or *electricity*,
-    sorted into groups made by hand, as a share of all occurrences in each 25-year period (here
-    in our sample, so the numbers are smaller and noisier than in the lecture, which used the
-    whole corpus). **The groups are a choice**: a different list gives a different picture. Edit
-    them (one group per line, `name: word, word, ...`), or change the target words.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    group_targets = mo.ui.text(value="electric, electrical, electricity", label="Words:", full_width=True)
-    group_lists = mo.ui.text_area(
-        value=(
-            "rubbing & attraction: rubbed, rubbing, friction, attract, attraction, attracts, attracted, repel, repels, repelled, effluvia, virtue, amber, wax\n"
-            "fluid & fire: fluid, fire, aether, ether\n"
-            "living bodies: animal, animals, torpedo, gymnotus, eel, fish, fishes, nerve, nerves, nervous, muscle, muscles, muscular, frog, frogs, paralytic, patient, patients, cure, cured, disease, shock, shocks\n"
-            "current & measurement: current, currents, resistance, conductivity, volt, volts, ohm, ohms, potential, units\n"
-            "machines & technology: machine, machines, battery, batteries, dynamo, dynamos, telegraph, telegraphs, lamp, lamps, lighting, cable, cables, engine, engines, motor, motors, tramways"
-        ),
-        label="Groups:",
-        full_width=True,
-        rows=6,
-    )
-    mo.vstack([group_targets, group_lists])
-    return group_lists, group_targets
-
-
-@app.cell
-def _(alt, group_lists, group_targets, mo, pl, re, text_word_counts, texts):
-    _targets = [w.strip().lower() for w in group_targets.value.split(",") if w.strip()]
-    _group_of = {}
-    for _line in group_lists.value.splitlines():
-        if ":" in _line:
-            _name, _ws = _line.split(":", 1)
-            for _w in re.findall(r"[a-z]+", _ws.lower()):
-                _group_of[_w] = _name.strip()
-    mo.stop(not _targets or not _group_of, mo.md("Type target words and at least one group.").callout(kind="warn"))
-
-    _ids = text_word_counts.filter(pl.col("word").is_in(_targets)).select("text_id").unique()
-    # (kept small for the browser: only the target and group words, with their position in the text)
-    _keep = _targets + list(_group_of)
-    _tokens = (
-        texts.join(_ids, on="text_id", how="semi")
-        .lazy()
-        .select("text_id", "year", pl.col("text").str.to_lowercase().str.extract_all(r"[a-z]+").alias("w"))
-        .select(
-            "text_id",
-            "year",
-            pl.col("w").list.eval(pl.element().filter(pl.element().is_in(_keep))).alias("word"),
-            pl.col("w").list.eval(pl.arg_where(pl.element().is_in(_keep))).alias("position"),
-        )
-        .explode("word", "position")
-        .drop_nulls("word")
-        .with_columns(pl.col("position").cast(pl.Int64))
-        .collect()
-    )
-    _hits = _tokens.filter(pl.col("word").is_in(_targets)).with_columns(
-        pl.format("{}–{}", (pl.col("year") // 25) * 25, (pl.col("year") // 25) * 25 + 24).alias("period")
-    )
-    _groups = pl.DataFrame({"word": list(_group_of), "group": list(_group_of.values())})
-    # group words within 5 words of each occurrence, in the same text
-    _nearby = (
-        _hits.select("text_id", pl.col("position").alias("p"), "period")
-        .join(_tokens.select("text_id", pl.col("position").alias("q"), "word").join(_groups, on="word"), on="text_id")
-        .filter(((pl.col("p") - pl.col("q")).abs() <= 5) & (pl.col("p") != pl.col("q")))
-    )
-    _n = _hits.group_by("period").agg(pl.len().alias("occurrences")).filter(pl.col("occurrences") >= 20)
-    group_shares = (
-        _n.join(pl.DataFrame({"group": sorted(set(_group_of.values()))}), how="cross")
-        .join(_nearby.group_by("period", "group").agg(pl.len().alias("near")), on=["period", "group"], how="left")
-        .with_columns(pl.col("near").fill_null(0))
-        .with_columns((pl.col("near") / pl.col("occurrences") * 100).round(1).alias("per_100"))
-        .sort("period")
-    )
-    alt.Chart(group_shares).mark_line(point=True).encode(
-        x=alt.X("period:O", title="25-year period (only periods with at least 20 occurrences)"),
-        y=alt.Y("per_100:Q", title="Group words nearby, per 100 occurrences"),
-        color=alt.Color("group:N", title="Group"),
-        tooltip=["group", "period", "near", "occurrences", "per_100"],
-    ).properties(height=300)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ✏️ **Your turn.** In the lecture, living bodies (cures, the torpedo fish, Galvani's frogs) were
-    a real strand before 1800, machines stayed low, and measurement words rose from the 1820s.
-    Do you see the same in the sample? Move *shock* from living bodies to a new group, or add a
-    group of your own (`light: light, lighting, lamp, lamps`). How much does the picture depend
-    on the lists?
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
     compare_by = mo.ui.dropdown(
         options={
             "Topic": "topic",
@@ -1207,11 +1106,11 @@ def _(mo):
     mo.md(r"""
     ### 🗣️ Plenary 2 (about 5 minutes)
 
-    Pick **one collocation, one distinctive word or one result from the *electricity* groups**
-    that surprised you, and explain it to your neighbours. Then ask:
+    Pick **one collocation or one distinctive word** that surprised you, and explain it to your
+    neighbours. Then ask:
 
-    - How much did the result depend on choices you made: the window, the period, the word lists
-      in the groups?
+    - How much did the result depend on choices you made: the window, the period, the minimum
+      count?
     - Is it about science, or about how scientists wrote (letters, abstracts, formal papers)?
     - What is lost when we compare whole topics or journals rather than reading the texts?
 
@@ -1458,6 +1357,137 @@ def _(alt, map_period, map_words, models, np, pl):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Semantic shift: which words moved?
+
+    The two models were trained separately, so their numbers cannot be compared directly: the
+    first of the 100 numbers in one model has nothing to do with the first number in the other.
+    To compare them, we first **align** the two models. We rotate the earlier model so that the
+    10,000 most frequent words known to both models line up as closely as possible with their
+    positions in the later model. Most words keep roughly the same company, so they end up in
+    roughly the same place. A word that is still far from its old position after the rotation has
+    changed its company: a sign (no more) of a change in meaning. This is the method of Hamilton,
+    Leskovec and Jurafsky, *Diachronic Word Embeddings Reveal Statistical Laws of Semantic
+    Change* (2016).
+
+    For one word you see its similarity to itself across the two periods (1 = no change), its
+    neighbours in each period, and which later words now sit where the word used to be.
+    """)
+    return
+
+
+@app.cell
+def _(models, np):
+    # Align the earlier model to the later one (orthogonal Procrustes), using the 10,000
+    # most frequent words that both models know (the models list words by frequency).
+    _early, _late = models["1665-1799"], models["1800-1920"]
+    shared_words = [w for w in _early["words"] if w in _late["index"]][:10_000]
+    _A = _early["vectors"][[_early["index"][w] for w in shared_words]]
+    _B = _late["vectors"][[_late["index"][w] for w in shared_words]]
+    _U, _, _Vt = np.linalg.svd(_A.T @ _B)
+    early_aligned = _early["vectors"] @ (_U @ _Vt)
+    # how similar each shared word is to itself in the other period (1 = no change)
+    self_similarity = (early_aligned[[_early["index"][w] for w in shared_words]] * _B).sum(axis=1)
+    return early_aligned, self_similarity, shared_words
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    shift_word = mo.ui.text(value="nucleus", label="Word:")
+    shift_word
+    return (shift_word,)
+
+
+@app.cell(hide_code=True)
+def _(early_aligned, mo, models, np, pl, self_similarity, shift_word):
+    def _nearest(model, vector, word, n=10):
+        _sim = model["vectors"] @ vector
+        _best = [i for i in np.argsort(-_sim)[: n + 1] if model["words"][i] != word][:n]
+        return pl.DataFrame({"word": [model["words"][i] for i in _best], "similarity": _sim[_best].astype(float).round(2)})
+
+    _w = shift_word.value.strip().lower()
+    _early, _late = models["1665-1799"], models["1800-1920"]
+    if _w not in _early["index"] or _w not in _late["index"]:
+        _out = mo.md(f"*{_w}* is not in both models. Try another word.").callout(kind="warn")
+    else:
+        _old = early_aligned[_early["index"][_w]]
+        _self = float(_old @ _late["vectors"][_late["index"][_w]])
+        _less = float((self_similarity > _self).mean() * 100)
+        _table = lambda df: mo.ui.table(df, selection=None, page_size=10, show_column_summaries=False)
+        _out = mo.vstack(
+            [
+                mo.md(
+                    f"Similarity of *{_w}* in 1665–1799 to *{_w}* in 1800–1920: **{_self:.2f}**. "
+                    f"{_less:.0f}% of the 10,000 most frequent shared words changed less."
+                ),
+                mo.hstack(
+                    [
+                        mo.vstack([mo.md("**Neighbours 1665–1799**"), _table(_nearest(_early, _early["vectors"][_early["index"][_w]], _w))]),
+                        mo.vstack([mo.md("**Neighbours 1800–1920**"), _table(_nearest(_late, _late["vectors"][_late["index"][_w]], _w))]),
+                        mo.vstack([mo.md("**1800–1920 words where it used to be**"), _table(_nearest(_late, _old, _w))]),
+                    ],
+                    widths="equal",
+                    gap=1,
+                ),
+            ]
+        )
+    _out
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    **Which words moved most?** The table lists the words whose position changed most, among the
+    most frequent words known to both models. Rare words move a lot by chance, so use the slider
+    to include more or fewer words.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    shift_top = mo.ui.slider(start=1000, stop=10000, step=1000, value=5000, label="Only the most frequent", show_value=True)
+    shift_top
+    return (shift_top,)
+
+
+@app.cell(hide_code=True)
+def _(mo, models, np, pl, self_similarity, shared_words, shift_top):
+    def _top5(model, word):
+        _sim = model["vectors"] @ model["vectors"][model["index"][word]]
+        return ", ".join(model["words"][i] for i in np.argsort(-_sim)[1:6])
+
+    _order = np.argsort(self_similarity[: shift_top.value])[:25]
+    most_moved = pl.DataFrame(
+        {
+            "word": [shared_words[i] for i in _order],
+            "similarity": self_similarity[_order].astype(float).round(2),
+            "neighbours 1665–1799": [_top5(models["1665-1799"], shared_words[i]) for i in _order],
+            "neighbours 1800–1920": [_top5(models["1800-1920"], shared_words[i]) for i in _order],
+        }
+    )
+    mo.ui.table(most_moved, selection=None, page_size=25, show_column_summaries=False)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ✏️ **Your turn.** Try `cell`, `field` (from the field of a telescope to a magnetic field), `energy`,
+    `virtue` (the "electric virtue"), `current`, `airs` (the chemists' "airs" of the 1770s), and
+    `electricity` itself, which moves less than you might expect. Then look at the list of words
+    that moved most: which of them changed meaning, and which only show that the corpus
+    changed (more French, worse OCR, new kinds of paper)?
+
+    Watch out for French and Latin words (*axe*, *gaz*), OCR fragments (*em*, *tho*), and
+    abbreviations: they move because the source changed, not the language.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### 🗣️ Plenary 3 (about 5 minutes)
 
     Share **one word whose nearest neighbours differ** between the two models (for example
@@ -1467,6 +1497,8 @@ def _(mo):
       used?
     - Which neighbours would you not have found by counting alone?
     - What would you need to read to check what the model tells you?
+    - In the list of words that moved most, which shifts are real changes of meaning, and
+      which come from names, spelling or OCR?
 
     *Got here early?* Put ten words of your own on the map of words, and see which groups form.
     """).callout(kind="success")

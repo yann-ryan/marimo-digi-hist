@@ -52,11 +52,19 @@ Dutch `role`→`chamber`), the tokenising cell, and the stopword list (its hidde
 line so students can find it). Three 🗣️ plenaries (~5 min each) at the end of Parts 2, 3 and 4,
 each with a "got here early?" task. They add ~15 minutes to the timings above.
 
+**Semantic shift (2026-11-23, all three labs, end of Part 4):** the earlier model is aligned to the
+later one with orthogonal Procrustes on the 10,000 most frequent shared words (Hamilton et al. 2016).
+For one word, the notebook shows its similarity to itself across periods, its neighbours in each
+period, and the later words nearest its old position. It also lists the 25 words that moved most,
+with a slider for how many frequent words to include. Defaults: *sovereign* (Old Bailey), *nucleus*
+(Royal Society), *gemeenschap* (Dutch). The most-moved lists include names, OCR fragments and French,
+and the text asks students to tell these apart from real changes of meaning.
+
 The three notebooks were lined up with lecture v6 on 2026-11-20: part titles follow the lecture's
 methods (frequency, association, embeddings), and each lab gained the next-word table, the TF-IDF
 side-by-side view and a Pitfalls part. The Royal Society lab also has the lecture's electricity
 thread (*electric fire / electric current* trends, the noun after *electric* by 25-year period,
-grouped collocates of *electricity* with editable groups, neighbours of *electricity*). The Dutch
+neighbours of *electricity*; the grouped-collocates exercise was removed on 2026-11-23 because it depended on hand-made word lists). The Dutch
 lab has the lecture's *burgers* / *gemeenschap* neighbours and spelling/OCR pitfalls.
 
 The lab mirrors the lecture's three methods: frequency (counts, normalisation,
